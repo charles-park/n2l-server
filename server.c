@@ -82,7 +82,13 @@ typedef struct channel__t {
 	
 	/* command send control time */
 	struct timeval t;
-	int				running_time;	
+
+	/* watchdog count */
+	int				watchdog_cnt;
+
+	/* Busy status의 경우 일정시간 cmd delay */
+	int				cmd_wait_delay;	
+
 	int				finish_r_item;
 }	channel_t;
 
@@ -130,7 +136,6 @@ struct server_t {
 //------------------------------------------------------------------------------
 int 	app_init 			(struct server_t *pserver) ;
 void 	app_exit 			(struct server_t *pserver);
-void 	ui_item_update 		(struct server_t *pserver, int uid, bool is_info, char *resp_msg);
 bool 	run_interval_check 	(struct timeval *t, double interval_ms);
 void 	server_alive 		(struct server_t *pserver);
 int 	main				(int argc, char **argv);
@@ -387,22 +392,6 @@ void app_exit (struct server_t *pserver)
 
 //------------------------------------------------------------------------------
 //------------------------------------------------------------------------------
-void ui_item_update (struct server_t *pserver, int uid, bool is_info, char *resp_msg)
-{
-	char *ptr = strtok(resp_msg, ",");
-
-	if (ptr != NULL) {
-		if (!is_info)
-			ui_set_ritem (pserver->pfb, pserver->pui, uid,
-							(atoi(ptr) == 1) ? COLOR_GREEN : COLOR_RED, -1);
-		if ((ptr = strtok (NULL, ",")) != NULL)
-			ui_set_sitem (pserver->pfb, pserver->pui, uid, -1, -1, ptr);
-		ui_update    (pserver->pfb, pserver->pui, uid);
-	}
-}
-
-//------------------------------------------------------------------------------
-//------------------------------------------------------------------------------
 bool run_interval_check (struct timeval *t, double interval_ms)
 {
 	struct timeval base_time;
@@ -469,6 +458,25 @@ void power_pins_check (struct server_t *pserver)
 	}
 }
 //------------------------------------------------------------------------------
+#define	WATCHDOG_RESET_COUNT	5	// 5 sec
+void system_watchdog (struct server_t *pserver)
+{
+	char ch;
+	for (ch = 0; ch < CH_END; ch++) {
+		if (!pserver->channel[ch].is_available)
+			continue;
+		if (pserver->channel[ch].watchdog_cnt++ < WATCHDOG_RESET_COUNT)
+			continue;
+		pserver->channel[ch].cmd_pos = 0;
+		pserver->channel[ch].is_busy = 0;
+		pserver->channel[ch].is_connect = 0;
+		pserver->channel[ch].watchdog_cnt = 0;
+		protocol_msg_send (pserver->channel[ch].puart, 'P', 1, "REBOOT", "-");
+		info ("%s : channel = %d\n", __func__, ch);
+	}
+}
+
+//------------------------------------------------------------------------------
 void server_alive_display (struct server_t *pserver)
 {
 	static bool onoff = false;
@@ -479,8 +487,18 @@ void server_alive_display (struct server_t *pserver)
 					onoff ? COLOR_GREEN : pserver->pui->bc.uint, -1);
 		onoff = !onoff;
 
-		// 
 		power_pins_check (pserver);
+		system_watchdog (pserver);
+
+#define	STATUS_L_UART_R_ITEM	42
+#define	STATUS_R_UART_R_ITEM	46
+		if (!pserver->channel[CH_L].is_available)
+			ui_set_ritem (pserver->pfb, pserver->pui, STATUS_L_UART_R_ITEM,
+						onoff ? COLOR_RED : pserver->pui->bc.uint, -1);
+
+		if (!pserver->channel[CH_R].is_available)
+			ui_set_ritem (pserver->pfb, pserver->pui, STATUS_R_UART_R_ITEM,
+						onoff ? COLOR_RED : pserver->pui->bc.uint, -1);
 
 		{
 			char uptime_str[10], mac_addr[20], ip_addr[20];
@@ -504,24 +522,6 @@ void server_alive_display (struct server_t *pserver)
 				ui_set_sitem (pserver->pfb, pserver->pui, IPADDR_DISPLAY_S_ITEM, -1, -1, ip_addr);
 			}
 		}
-// yellow
-#if 0
-#define	FINISH_DISPLAY_R_ITEM_L	162
-#define	FINISH_DISPLAY_R_ITEM_R	166
-ui_set_ritem (server.pfb, server.pui, ch ? 166 : 162,
-			COLOR_MAROON, -1);
-ui_set_sitem (server.pfb, server.pui, ch ? 166 : 162, -1, -1, "RUNNING");
-#endif
-
-#if 0
-		if (pserver->channel[1].is_connect) {
-			protocol_msg_send (pserver->channel[1].puart, 'C',
-							pserver->cmds[onoff].uid[onoff],
-							pserver->cmds[onoff].group,
-							pserver->cmds[onoff].action);
-			pserver->channel[onoff].is_busy = true;
-		}
-#endif
 	}
 }
 
@@ -529,12 +529,61 @@ ui_set_sitem (server.pfb, server.pui, ch ? 166 : 162, -1, -1, "RUNNING");
 void client_msg_catch (struct server_t *pserver, char ch, char ret_ack, char *msg)
 {
 	// 보내진 uid와 지금 uid가 같은 경우 busy flag off
-	int uid, status;
+	int uid, status, str_pos, len;
 	char msg_str[20];
 	channel_t *pchannel = &pserver->channel[ch];
 
 	memset (msg_str, 0x00, sizeof(msg_str));
-	// msg_parser (&server, msg, &uid, &status, msg_str);
+	memcpy (msg_str, &msg[0], 3);
+
+	uid    = atoi (msg_str);
+	status = (msg[3] == '1') ? 1 : 0;
+	str_pos = 5;	len = sizeof(msg_str);
+	while ((msg[str_pos++] == ' ') && len--);
+
+	memset  (msg_str, 0x00, sizeof(msg_str));
+	strncpy (msg_str, &msg [str_pos-1], sizeof(msg_str));
+
+	info ("%d %d :%s\n", uid, status, &msg[str_pos-1]);
+
+	/* 보내진 UI ID와 받은 UI ID가 맞는지 확인 */
+	if (uid == pserver->cmds[pchannel->cmd_pos].uid[ch]) {
+
+		if (pserver->cmds[pchannel->cmd_pos].is_adc) {
+			#if 0
+			if (!strncmp (pserver->cmds[pchannel->cmd_pos].group),
+				"HEADER", sizeof("HEADER")) {
+				status = adc_pattern_check (pchannel->i2c_fd,
+					pserver->cmds[pchannel->cmd_pos].adc_name,
+					pattern_no,
+					pserver->cmds[pchannel->cmd_pos].max,
+					pserver->cmds[pchannel->cmd_pos].min);
+			} else {
+				status = adc_value_check (pchannel->i2c_fd,
+					pserver->cmds[pchannel->cmd_pos].adc_name,
+					pserver->cmds[pchannel->cmd_pos].max,
+					pserver->cmds[pchannel->cmd_pos].min);
+			}
+			strncmp (pserver->cmds[pchannel->cmd_pos].action);
+			strncmp (pserver->cmds[pchannel->cmd_pos].adc_name);
+			strncmp (pserver->cmds[pchannel->cmd_pos].max);
+			strncmp (pserver->cmds[pchannel->cmd_pos].min);
+			#endif
+		}
+		/* app.cfg의 설정 참조 */
+		if (!pserver->cmds[pchannel->cmd_pos].is_info) {
+			ui_set_ritem (pserver->pfb, pserver->pui, uid,
+						status ? COLOR_GREEN : COLOR_RED, -1);
+		}
+		/* app.cfg의 설정 참조 */
+		if (pserver->cmds[pchannel->cmd_pos].is_str)
+			ui_set_sitem (pserver->pfb, pserver->pui, uid, -1, -1, &msg[str_pos-1]);
+
+		ui_update (pserver->pfb, pserver->pui, uid);
+	}
+	else
+		err ("UID mismatch %d, %d\n", uid, pserver->cmds[pchannel->cmd_pos].uid[ch]);
+
 	if (pchannel->cmd_pos < pserver->cmd_count-1)
 		pchannel->cmd_pos++;
 	else {
@@ -542,9 +591,11 @@ void client_msg_catch (struct server_t *pserver, char ch, char ret_ack, char *ms
 		ui_update (pserver->pfb, pserver->pui, -1);
 		// finish icon display : total status
 	}
+	pchannel->watchdog_cnt = 0;
 }
 
 //------------------------------------------------------------------------------
+#define	CMD_SEND_INTERVAL	20
 void client_msg_parser (struct server_t *pserver)
 {
 	char msg[CMD_CHAR_MAX], ch, cmd;
@@ -576,27 +627,33 @@ void client_msg_parser (struct server_t *pserver)
 				break;
 				case	'B':
 					pchannel->is_busy = false;
+					pchannel->cmd_wait_delay = (1000 / CMD_SEND_INTERVAL);
 					info ("CH %s : Device Busy\n", pchannel->dev_uart_name);
 				break;
 				default :
 				break;
 			}
 			memset (msg, 0x00, sizeof(msg));
+			pchannel->watchdog_cnt = 0;
 		}
 	}
 }
 
 //------------------------------------------------------------------------------
-#define	CMD_SEND_INTERVAL	10
 void cmd_sned_control (struct server_t *pserver)
 {
 	char ch;
-
 	channel_t *pchannel;
 
 	for (ch = 0; ch < CH_END; ch++) {
 		pchannel = &pserver->channel[ch];
 		if (run_interval_check(&pchannel->t, CMD_SEND_INTERVAL)) {
+			if (!pserver->channel[ch].is_available)
+				continue;
+			if (pchannel->cmd_wait_delay) {
+				pchannel->cmd_wait_delay--;
+				continue;
+			}
 			if (pchannel->power_status) {
 				if (!pchannel->is_connect || pchannel->is_busy)
 					continue;
@@ -608,6 +665,7 @@ void cmd_sned_control (struct server_t *pserver)
 								pserver->cmds[pchannel->cmd_pos].group,
 								pserver->cmds[pchannel->cmd_pos].action);
 				pchannel->is_busy = true;
+				pchannel->watchdog_cnt = 0;
 			}
 		}
 	}
