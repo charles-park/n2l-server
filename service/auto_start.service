@@ -1,0 +1,33 @@
+#
+# Service의 등록(부팅시 자동으로 실행되어짐)
+#
+#  서비스등록 방법(root권한 필요):
+#    등록할 파일 *.service 을 /etc/systemd/system/ 으로 복사함.
+#    서비스의 등록 : sudo systemctl enable {service name}
+#    서비스의 해제 : sudo systemctl disable {service name}
+#
+Description=ODROID-N2L JIG Server
+# After=syslog.target
+After=sysinit.target
+
+[Service]
+Type=simple
+
+# login의 user를 입력한다. root계정의 경우 root로 입력한다.
+# User=odroid
+User=root
+
+# github에서 내려 받은 폴더를 기록하도록 한다.
+# WorkingDirectory=/home/odroid/netinfo_display
+WorkingDirectory=/root/n2l-server
+
+# apt install screen package가 설치되어있어야 한다.
+# Network으로 접속시 확인하기 위하여 screen -ls 명령을 사용할 수 있다.
+# screen -r {service no or name} 으로 터미널 상태를 확인 할 수 있으며
+# 터미널 상태확인 중 종료는 Ctrl + c, screen 상태만 종료시 Ctrl + a,d (detect)로 사용한다.
+ExecStart=/root/n2l-server/service/auto_start.sh > /dev/null 2>&1
+
+[Install]
+WantedBy=multi-user.target
+#WantedBy=default.target
+
