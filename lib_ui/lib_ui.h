@@ -81,6 +81,7 @@ extern void 	ui_set_str      (fb_info_t *fb, ui_grp_t *ui_grp,
                                     int f_id, int x, int y, int scale, int font, char *fmt, ...);
 extern void 	ui_set_printf   (fb_info_t *fb, ui_grp_t *ui_grp, int id, char *fmt, ...);
 extern void 	ui_update       (fb_info_t *fb, ui_grp_t *ui_grp, int id);
+extern void		ui_update_group	(fb_info_t *fb, ui_grp_t *ui_grp, int gid);
 extern void 	ui_close        (ui_grp_t *ui_grp);
 extern ui_grp_t *ui_init    	(fb_info_t *fb, const char *cfg_filename);
 

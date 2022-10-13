@@ -55,6 +55,7 @@ static   void _ui_update         (fb_info_t *fb, ui_grp_t *ui_grp, int id);
                                     int f_id, int x, int y, int scale, int font, char *fmt, ...);
          void ui_set_printf      (fb_info_t *fb, ui_grp_t *ui_grp, int id, char *fmt, ...);
          void ui_update          (fb_info_t *fb, ui_grp_t *ui_grp, int id);
+         void ui_update_group    (fb_info_t *fb, ui_grp_t *ui_grp, int gid);
          void ui_close           (ui_grp_t *ui_grp);
          ui_grp_t *ui_init       (fb_info_t *fb, const char *cfg_filename);
 
@@ -433,6 +434,16 @@ void ui_update (fb_info_t *fb, ui_grp_t *ui_grp, int id)
    else
       /* id값으로 설정된 1 개의 item에 대한 화면 업데이트 */
       _ui_update (fb, ui_grp, id);
+}
+
+//------------------------------------------------------------------------------
+void ui_update_group (fb_info_t *fb, ui_grp_t *ui_grp, int gid)
+{
+   int i;
+   for (i = 0; i < ui_grp->b_item_cnt; i++) {
+      if (ui_grp->b_item[i].gid == gid)
+         _ui_update (fb, ui_grp, ui_grp->b_item[i].id);
+   }
 }
 
 //------------------------------------------------------------------------------
