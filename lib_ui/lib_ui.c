@@ -196,6 +196,10 @@ static void _ui_parser_cmd_B (char *buf, fb_info_t *fb, ui_grp_t *ui_grp)
       // default string for ui_reset
       strncpy(ui_grp->b_item[item_cnt].s_dfl, ptr, slen-1);
    }
+
+   ptr = strtok (NULL, ",");
+   ui_grp->b_item[item_cnt].gid = atoi(ptr);
+
    s->f_type  = ui_grp->f_type;   s->fc.uint = ui_grp->fc.uint;
    s->bc.uint = ui_grp->bc.uint;
 

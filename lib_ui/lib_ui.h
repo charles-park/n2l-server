@@ -48,6 +48,7 @@ typedef struct s_item__t {
 
 // rect box + string item
 typedef struct b_item__t {
+	int				gid;
 	int				id;
 	rect_item_t		r;
 	string_item_t	s;
