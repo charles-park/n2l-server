@@ -56,9 +56,12 @@ struct system_test_t {
 //------------------------------------------------------------------------------
 int 	get_ip_addr 		(const char *eth_name, char *ip, int *link_speed);
 int 	get_mac_addr 		(char *mac_str);
+void 	get_netinfo 		(char *mac_str, char *ip_str, int *plink_speed);
+bool 	is_net_alive		(void);
 
 bool 	run_interval_check 	(struct timeval *t, double interval_ms);
 long 	uptime 				(void);
+void 	uptime_str			(char *uptime_str);
 
 char 	*remove_space_str 	(char *str);
 char	*toupperstr			(char *str);
@@ -70,6 +73,26 @@ int 	fwrite_str 			(char *filename, char *wstr);
 int		find_appcfg_data	(char *fkey, char *fdata);
 
 //------------------------------------------------------------------------------
+//------------------------------------------------------------------------------
+#define	NET_TEST_STRING	"ping google.com -c 1 -w 1"
+
+bool is_net_alive(void)
+{
+	char buf[2048];
+	FILE *fp;
+
+	if ((fp = popen(NET_TEST_STRING, "r")) != NULL) {
+		while (fgets(buf, 2048, fp)) {
+			if (NULL != strstr(buf, "1 received")) {
+				pclose(fp);
+				return true;
+			}
+		}
+		pclose(fp);
+	}
+	return false;
+}
+
 //------------------------------------------------------------------------------
 int get_ip_addr (const char *eth_name, char *ip, int *link_speed)
 {
@@ -150,6 +173,38 @@ int get_mac_addr (char *mac_str)
 }
 
 //------------------------------------------------------------------------------
+void get_netinfo (char *mac_str, char *ip_str, int *plink_speed)
+{
+	static char mac_addr[20], ip_addr[20];
+	static int link_speed;
+	static bool is_netinfo = false;
+
+	if (!is_netinfo) {
+		memset (mac_addr, 0x00, sizeof(mac_addr));
+		if (!get_mac_addr(mac_addr)) {
+			info ("MAC ADDR : %s\n", mac_addr);
+			memset (ip_addr, 0x00, sizeof(ip_addr));
+			if (!get_ip_addr("eth0", ip_addr,
+								&link_speed)) {
+				info ("IP ADDR : %s, link speed = %d\n", ip_addr, link_speed);
+				is_netinfo = true;
+			}
+		}
+	} else {
+		if (!(is_netinfo = is_net_alive())) {
+			memset (mac_addr, 0x00, sizeof(mac_addr));
+			memset (ip_addr, 0x00, sizeof(ip_addr));
+			link_speed = 0;
+			sprintf (mac_addr, "%s", "xx:xx:xx:xx:xx:xx");
+			sprintf ( ip_addr, "%s", "xxx.xxx.xxx.xxx");
+		}
+	}
+	strncpy (mac_str, mac_addr, strlen(mac_addr));
+	strncpy ( ip_str,  ip_addr, strlen( ip_addr));
+	*plink_speed = link_speed;
+}
+
+//------------------------------------------------------------------------------
 bool run_interval_check (struct timeval *t, double interval_ms)
 {
 	struct timeval base_time;
@@ -188,6 +243,18 @@ long uptime (void)
 		return	atol(uptime_str);
 	}
 	return 0;
+}
+
+//------------------------------------------------------------------------------
+void uptime_str (char *p_uptime)
+{
+	long up_time_sec = uptime();
+
+	memset  (p_uptime, 0x00, sizeof(p_uptime));
+	sprintf (p_uptime, "%02d:%02d:%02d",
+								(int)(up_time_sec / 3600),
+								(int)(up_time_sec / 60) % 60, 
+								(int)(up_time_sec % 60));
 }
 
 //------------------------------------------------------------------------------

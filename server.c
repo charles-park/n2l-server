@@ -315,6 +315,10 @@ void power_pins_check (struct server_t *pserver)
 			}
 		}
 		pserver->channel[ch].power_status = err_cnt ? false : true;
+		if (!pserver->channel[ch].power_status) {
+			pserver->channel[ch].cmd_pos = 0;		pserver->channel[ch].is_busy = 0;
+			pserver->channel[ch].is_connect = 0;	pserver->channel[ch].watchdog_cnt = 0;
+		}
 	}
 }
 
@@ -323,6 +327,8 @@ void system_watchdog (struct server_t *pserver)
 {
 	char ch;
 	for (ch = 0; ch < CH_END; ch++) {
+		if (!pserver->channel[ch].power_status)
+			continue;
 		if (!pserver->channel[ch].is_available)
 			continue;
 		if (pserver->channel[ch].watchdog_cnt++ < WATCHDOG_RESET_COUNT)
@@ -339,7 +345,7 @@ void system_watchdog (struct server_t *pserver)
 //------------------------------------------------------------------------------
 void server_alive_display (struct server_t *pserver)
 {
-	static bool onoff = false;
+	static bool onoff = false, have_net = false;
 	static int cmd = 0;
 
 	if (run_interval_check(&pserver->t, ALIVE_DISPLAY_IMTERVAL)) {
@@ -358,28 +364,24 @@ void server_alive_display (struct server_t *pserver)
 			ui_set_ritem (pserver->pfb, pserver->pui, STATUS_R_UART_R_ITEM,
 						onoff ? COLOR_RED : pserver->pui->bc.uint, -1);
 
+		#if defined(UPTIME_DISPLAY_S_ITEM)
 		{
-			char uptime_str[10], mac_addr[20], ip_addr[20];
-			int link_speed;
-			unsigned long up_time_sec = uptime();
+			char uptime[10];
 
-			memset(uptime_str, 0x00, sizeof(uptime_str));
-			sprintf (uptime_str, "%02d:%02d:%02d",
-			 							(int)(up_time_sec / 3600),
-			  							(int)(up_time_sec / 60) % 60, 
-			  							(int)(up_time_sec % 60));
-			ui_set_sitem (pserver->pfb, pserver->pui, UPTIME_DISPLAY_S_ITEM, -1, -1, uptime_str);
-
-			memset(mac_addr, 0x00, sizeof(mac_addr));
-			if (!get_mac_addr(mac_addr)) {
-				info ("MAC ADDR : %s\n", mac_addr);
-				memset (ip_addr, 0x00, sizeof(ip_addr));
-				if (!get_ip_addr("eth0", ip_addr,
-									&link_speed))
-					info ("IP ADDR : %s, link speed = %d\n", ip_addr, link_speed);
-				ui_set_sitem (pserver->pfb, pserver->pui, IPADDR_DISPLAY_S_ITEM, -1, -1, ip_addr);
-			}
+			memset (uptime, 0x00, sizeof(uptime));		uptime_str(uptime);
+			ui_set_sitem (pserver->pfb, pserver->pui, UPTIME_DISPLAY_S_ITEM, -1, -1, uptime);
 		}
+		#endif
+
+		#if defined(IPADDR_DISPLAY_S_ITEM)
+		{
+			char ip_addr[20], mac_addr[20];
+			int link_speed;
+			memset (ip_addr, 0x00, sizeof(ip_addr));
+			get_netinfo(mac_addr, ip_addr, &link_speed);
+			ui_set_sitem (pserver->pfb, pserver->pui, IPADDR_DISPLAY_S_ITEM, -1, -1, ip_addr);
+		}
+		#endif
 	}
 }
 

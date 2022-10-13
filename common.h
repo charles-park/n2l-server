@@ -42,11 +42,14 @@
 //------------------------------------------------------------------------------
 // Function prototype
 //------------------------------------------------------------------------------
-extern  int get_ip_addr 		(const char *eth_name, char *ip, int *link_speed);
-extern  int get_mac_addr 		(char *mac_str);
+extern  bool    is_net_alive    (void);
+extern  int     get_ip_addr     (const char *eth_name, char *ip, int *link_speed);
+extern  int     get_mac_addr    (char *mac_str);
+extern  void    get_netinfo     (char *mac_str, char *ip_str, int *plink_speed);
 
 extern  bool run_interval_check (struct timeval *t, double interval_ms);
 extern  long uptime 			(void);
+extern  void uptime_str			(char *uptime_str);
 
 extern  char *remove_space_str 	(char *str);
 extern	char *toupperstr        (char *str);
