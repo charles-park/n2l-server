@@ -45,6 +45,9 @@
 extern  int get_ip_addr 		(const char *eth_name, char *ip, int *link_speed);
 extern  int get_mac_addr 		(char *mac_str);
 
+extern  bool run_interval_check (struct timeval *t, double interval_ms);
+extern  long uptime 			(void);
+
 extern  char *remove_space_str 	(char *str);
 extern	char *toupperstr        (char *str);
 extern	char *tolowerstr        (char *str);

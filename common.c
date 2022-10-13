@@ -10,8 +10,8 @@
  * 
  */
 //------------------------------------------------------------------------------
-#include "common.h"
 #include "typedefs.h"
+#include "common.h"
 
 //------------------------------------------------------------------------------
 #define DUPLEX_HALF 0x00
@@ -56,6 +56,9 @@ struct system_test_t {
 //------------------------------------------------------------------------------
 int 	get_ip_addr 		(const char *eth_name, char *ip, int *link_speed);
 int 	get_mac_addr 		(char *mac_str);
+
+bool 	run_interval_check 	(struct timeval *t, double interval_ms);
+long 	uptime 				(void);
 
 char 	*remove_space_str 	(char *str);
 char	*toupperstr			(char *str);
@@ -144,6 +147,47 @@ int get_mac_addr (char *mac_str)
 	}
 	close (sock);
 	return -1;
+}
+
+//------------------------------------------------------------------------------
+bool run_interval_check (struct timeval *t, double interval_ms)
+{
+	struct timeval base_time;
+	double difftime;
+
+	gettimeofday(&base_time, NULL);
+
+	if (interval_ms) {
+		/* 현재 시간이 interval시간보다 크면 양수가 나옴 */
+		difftime = (base_time.tv_sec - t->tv_sec) +
+					((base_time.tv_usec - (t->tv_usec + interval_ms * 1000)) / 1000000);
+
+		if (difftime > 0) {
+			t->tv_sec  = base_time.tv_sec;
+			t->tv_usec = base_time.tv_usec;
+			return true;
+		}
+		return false;
+	}
+	/* 현재 시간 저장 */
+	t->tv_sec  = base_time.tv_sec;
+	t->tv_usec = base_time.tv_usec;
+	return true;
+}
+
+//------------------------------------------------------------------------------
+long uptime (void)
+{
+	FILE *fp;
+	char uptime_str[28];
+
+	if((fp = fopen("/proc/uptime", "r")) != NULL) {
+		memset (uptime_str, 0x00, sizeof(uptime_str));
+		fgets(uptime_str, 12, fp);
+		fclose(fp);
+		return	atol(uptime_str);
+	}
+	return 0;
 }
 
 //------------------------------------------------------------------------------

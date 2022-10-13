@@ -21,128 +21,9 @@
 #include "./lib_adc/lib_adc.h"
 
 #include "protocol.h"
+#include "server.h"
 
 //------------------------------------------------------------------------------
-// Default global value
-//------------------------------------------------------------------------------
-#define	SERVER_FB_DEVICE		"/dev/fb0"
-#define	SERVER_UI_CONFIG		"ui.cfg"
-
-#define	FIND_UART_NODE_BASE		"/sys/devices"
-
-#define	SERVER_UART_L_DEVICE	"/dev/ttyUSB0"
-#define	SERVER_UART_L_USB_PORT	"usb/usb1/1-1/1-1.4/1-1.4:1.0"
-#define	SERVER_UART_R_DEVICE	"/dev/ttyUSB1"
-#define	SERVER_UART_R_USB_PORT	"usb1/1-1/1-1.3/1-1.3:1.0"
-
-#define	SERVER_I2C_L_PORT		"/dev/i2c-1"
-#define	SERVER_I2C_R_PORT		"/dev/i2c-0"
-
-#define	ALIVE_DISPLAY_R_ITEM	0
-#define	ALIVE_DISPLAY_IMTERVAL	1000	/* 1000 ms */
-
-#define	UPTIME_DISPLAY_S_ITEM	7
-#define	IPADDR_DISPLAY_S_ITEM	22
-
-#define	FINISH_DISPLAY_R_ITEM_L	162
-#define	FINISH_DISPLAY_R_ITEM_R	166
-#define	APP_LOOP_DELAY			500		/* 1000 us */
-
-enum eCHANNEL {
-	CH_L = 0,
-	CH_R,
-	CH_END
-};
-
-//------------------------------------------------------------------------------
-typedef struct channel__t {
-	/* UART Control struct */
-	ptc_grp_t	*puart;
-
-	/* command를 보내고 데이터를 기다리는 상태 표시 */
-	bool	is_busy;
-	/* ttyUSB node가 있어 UART open이 가능한 상태표시 */
-	bool	is_available;
-	/* POWER_PIN으로 정의 되어진 모든 PIN이 정상인지 표시 */
-	bool	power_status;
-	
-	/* Client 보드와 통신하기 위한 USB uart node 이름 */
-	char	dev_uart_name[128];
-	char	usb_port[128];
-
-	/* ADC Board를 control하기 위한 device node 및 fd */
-	int		fd_i2c;
-	char	dev_i2c_name[128];
-
-	/* Client와 Server간의 BOOT cmd의 명령어 처리 상태 표시 */
-	bool	is_connect;
-
-	/* 진행중인 테스트 command위치 */
-	int		cmd_pos;
-
-	/* 테스트 진행중 발생된 에러 상황 */
-	int		err_count;
-	
-	/* command send control time */
-	struct timeval t;
-
-	/* watchdog count */
-	int				watchdog_cnt;
-
-	/* Busy status의 경우 일정시간 cmd delay */
-	int				cmd_wait_delay;	
-
-	int				finish_r_item;
-}	channel_t;
-
-typedef struct power_pins__t {
-	char	adc_name[16];	/* ADC Port name */
-	int		v_max, v_min;
-}	power_pins_t;
-
-#define	CMD_COUNT_MAX	256
-#define	POWER_PINS_MAX	8
-
-typedef struct cmd__t {
-	bool		is_info, is_str, is_adc;
-	int			uid[2];
-	char		group[10];
-	char		action[10];
-	char		adc_name[16];
-	int			max, min;
-}	cmd_t;
-
-struct server_t {
-
-	/* alive display control time */
-	struct timeval t;
-
-	int			alive_r_item;
-
-	/* FB name */
-	char		fb_dev[128];
-	char		ui_config[128];
-
-	fb_info_t	*pfb;
-	ui_grp_t	*pui;
-	channel_t	channel[2];
-	
-	int				power_pin_count;
-	power_pins_t	power_pins[POWER_PINS_MAX];
-
-	int				cmd_count;
-	cmd_t 			cmds[CMD_COUNT_MAX];
-};
-
-//------------------------------------------------------------------------------
-// Function prototype
-//------------------------------------------------------------------------------
-int 	app_init 			(struct server_t *pserver) ;
-void 	app_exit 			(struct server_t *pserver);
-bool 	run_interval_check 	(struct timeval *t, double interval_ms);
-void 	server_alive 		(struct server_t *pserver);
-int 	main				(int argc, char **argv);
-
 //------------------------------------------------------------------------------
 void find_uart_dev (struct server_t *pserver, int channel)
 {
@@ -171,8 +52,6 @@ void find_uart_dev (struct server_t *pserver, int channel)
 	}
 }
 
-//------------------------------------------------------------------------------
-#define	CMD_CHAR_MAX	128
 //------------------------------------------------------------------------------
 void server_cmd_load (struct server_t *pserver)
 {
@@ -235,11 +114,11 @@ void server_cmd_load (struct server_t *pserver)
 		else	break;
 	}
 
-	#if defined(DEBUG_MSG)
 	{
 		int i;
 		for (i = 0; i < pserver->cmd_count; i++) {
-			info ("%03d %03d %10s %10s %d %d %d %10s %04d %04d\n",
+			info ("CMD %02d, %03d %03d %10s %10s %d %d %d %10s %04d %04d\n",
+				i +1,
 				pserver->cmds[i].uid[0], pserver->cmds[i].uid[1], 
 				pserver->cmds[i].group, pserver->cmds[i].action, 
 				pserver->cmds[i].is_info, pserver->cmds[i].is_str, 
@@ -247,7 +126,6 @@ void server_cmd_load (struct server_t *pserver)
 				pserver->cmds[i].max, pserver->cmds[i].min);
 		}
 	}
-	#endif
 }
 
 //------------------------------------------------------------------------------
@@ -281,17 +159,16 @@ void power_pin_load (struct server_t *pserver)
 		else	break;
 	}
 
-	#if defined(DEBUG_MSG)
 	{
 		int i;
 		for (i = 0; i < pserver->power_pin_count; i++) {
-			info ("%10s %04d %04d\n",
+			info ("POWER PIN %02d, %10s, max(%04d), min(%04d)\n",
+				i +1,
 				pserver->power_pins[i].adc_name, 
 				pserver->power_pins[i].v_max, 
 				pserver->power_pins[i].v_min);
 		}
 	}
-	#endif
 }
 
 //------------------------------------------------------------------------------
@@ -412,58 +289,6 @@ void app_exit (struct server_t *pserver)
 }
 
 //------------------------------------------------------------------------------
-//------------------------------------------------------------------------------
-bool run_interval_check (struct timeval *t, double interval_ms)
-{
-	struct timeval base_time;
-	double difftime;
-
-	gettimeofday(&base_time, NULL);
-
-	if (interval_ms) {
-		/* 현재 시간이 interval시간보다 크면 양수가 나옴 */
-		difftime = (base_time.tv_sec - t->tv_sec) +
-					((base_time.tv_usec - (t->tv_usec + interval_ms * 1000)) / 1000000);
-
-		if (difftime > 0) {
-			t->tv_sec  = base_time.tv_sec;
-			t->tv_usec = base_time.tv_usec;
-			return true;
-		}
-		return false;
-	}
-	/* 현재 시간 저장 */
-	t->tv_sec  = base_time.tv_sec;
-	t->tv_usec = base_time.tv_usec;
-	return true;
-}
-
-//------------------------------------------------------------------------------
-//------------------------------------------------------------------------------
-long uptime (void)
-{
-	FILE *fp;
-	char uptime_str[28];
-
-	if((fp = fopen("/proc/uptime", "r")) != NULL) {
-		memset (uptime_str, 0x00, sizeof(uptime_str));
-		fgets(uptime_str, 12, fp);
-		fclose(fp);
-		return	atol(uptime_str);
-	}
-	return 0;
-}
-
-//------------------------------------------------------------------------------
-bool adc_check (int fd, char *adc_name, int max, int min)
-{
-	if (fd) {
-		// adc read...
-	}
-	return true;
-}
-
-//------------------------------------------------------------------------------
 void power_pins_check (struct server_t *pserver)
 {
 	int i, ch;
@@ -483,18 +308,10 @@ void power_pins_check (struct server_t *pserver)
 			if ((values[0] > pserver->power_pins[i].v_max) ||
 				(values[0] < pserver->power_pins[i].v_min)) {
 				err_cnt++;
-				err ("ch %d, adc value = %d, max = %d, min = %d\n",
+				err ("ch %d, %d > max %d or %d < min %d",
 					ch,
-					values[0],
-					pserver->power_pins[i].v_max,
-					pserver->power_pins[i].v_min);
-			}
-			else {
-				info ("ch %d, adc value = %d, max = %d, min = %d\n",
-					ch,
-					values[0],
-					pserver->power_pins[i].v_max,
-					pserver->power_pins[i].v_min);
+					values[0], pserver->power_pins[i].v_max,
+					values[0], pserver->power_pins[i].v_min);
 			}
 		}
 		pserver->channel[ch].power_status = err_cnt ? false : true;
@@ -502,7 +319,6 @@ void power_pins_check (struct server_t *pserver)
 }
 
 //------------------------------------------------------------------------------
-#define	WATCHDOG_RESET_COUNT	5	// 5 sec
 void system_watchdog (struct server_t *pserver)
 {
 	char ch;
@@ -534,8 +350,6 @@ void server_alive_display (struct server_t *pserver)
 		power_pins_check (pserver);
 		system_watchdog (pserver);
 
-#define	STATUS_L_UART_R_ITEM	42
-#define	STATUS_R_UART_R_ITEM	46
 		if (!pserver->channel[CH_L].is_available)
 			ui_set_ritem (pserver->pfb, pserver->pui, STATUS_L_UART_R_ITEM,
 						onoff ? COLOR_RED : pserver->pui->bc.uint, -1);
@@ -570,128 +384,10 @@ void server_alive_display (struct server_t *pserver)
 }
 
 //------------------------------------------------------------------------------
-const __u16	HeaderToGPIO[] = {
-	  0,   0,	// |  1 : 3.3V      ||  2 : 5.0V      |
-	493,   0,	// |  3 : I2C-2 SDA ||  4 : 5.0V      |
-	494,   0,	// |  5 : I2C-2 SCL ||  6 : GND       |
-	473, 488,	// |  7 : GPIOA.13  ||  8 : UART_TX_A |
-	  0, 489,	// |  9 : GND       || 10 : UART_RX_A |
-	479, 492,	// | 11 : GPIOX.3   || 12 : PWM_E     |
-	480,   0,	// | 13 : GPIOX.4   || 14 : GND       |
-	483, 476,	// | 15 : GPIOX.7   || 16 : GPIOX.0   |
-	  0, 477,	// | 17 : 3.3V      || 18 : GPIOX.1   |
-	484,   0,	// | 19 : SPI0_MOSI || 20 : GND       |
-	485, 478,	// | 21 : SPI0_MISO || 22 : GPIOX.2   |
-	487, 486,	// | 23 : SPI0_CLK  || 24 : SPI0_CS0  |
-	  0, 464,	// | 25 : GND       || 26 : GPIOA.4   |
-	474, 475,	// | 27 : I2C-3 SDA || 28 : I2C-3 SCL |
-	490,   0,	// | 29 : GPIOX.14  || 30 : GND       |
-	491, 472,	// | 31 : GPIOX.15  || 32 : GPIOA.12  |
-	481,   0,	// | 33 : GPIOX.5   || 34 : GND       |
-	482, 495,	// | 35 : GPIOX.6   || 36 : GPIOX.19  |
-	  0,   0,	// | 37 : ADC.AIN3  || 38 : REF 1.8V  |
-	  0,   0	// | 39 : GND       || 40 : ADC.AIN2  |
-};
-
-const __u16	Patterns[4][40] = {
-	{
-		// ALL High Pattern
-		0,   0,	// |  1 : 3.3V      ||  2 : 5.0V      |
-		1,   0,	// |  3 : I2C-2 SDA ||  4 : 5.0V      |
-		1,   0,	// |  5 : I2C-2 SCL ||  6 : GND       |
-		1,   1,	// |  7 : GPIOA.13  ||  8 : UART_TX_A |
-		0,   1,	// |  9 : GND       || 10 : UART_RX_A |
-		1,   1,	// | 11 : GPIOX.3   || 12 : PWM_E     |
-		1,   0,	// | 13 : GPIOX.4   || 14 : GND       |
-		1,   1,	// | 15 : GPIOX.7   || 16 : GPIOX.0   |
-		0,   1,	// | 17 : 3.3V      || 18 : GPIOX.1   |
-		1,   0,	// | 19 : SPI0_MOSI || 20 : GND       |
-		1,   1,	// | 21 : SPI0_MISO || 22 : GPIOX.2   |
-		1,   1,	// | 23 : SPI0_CLK  || 24 : SPI0_CS0  |
-		0,   1,	// | 25 : GND       || 26 : GPIOA.4   |
-		1,   1,	// | 27 : I2C-3 SDA || 28 : I2C-3 SCL |
-		1,   0,	// | 29 : GPIOX.14  || 30 : GND       |
-		1,   1,	// | 31 : GPIOX.15  || 32 : GPIOA.12  |
-		1,   0,	// | 33 : GPIOX.5   || 34 : GND       |
-		1,   1,	// | 35 : GPIOX.6   || 36 : GPIOX.19  |
-		0,   0,	// | 37 : ADC.AIN3  || 38 : REF 1.8V  |
-		0,   0	// | 39 : GND       || 40 : ADC.AIN2  |
-	},	{
-		// ALL Clear Pattern
-		0,   0,	// |  1 : 3.3V      ||  2 : 5.0V      |
-		0,   0,	// |  3 : I2C-2 SDA ||  4 : 5.0V      |
-		0,   0,	// |  5 : I2C-2 SCL ||  6 : GND       |
-		0,   0,	// |  7 : GPIOA.13  ||  8 : UART_TX_A |
-		0,   0,	// |  9 : GND       || 10 : UART_RX_A |
-		0,   0,	// | 11 : GPIOX.3   || 12 : PWM_E     |
-		0,   0,	// | 13 : GPIOX.4   || 14 : GND       |
-		0,   0,	// | 15 : GPIOX.7   || 16 : GPIOX.0   |
-		0,   0,	// | 17 : 3.3V      || 18 : GPIOX.1   |
-		0,   0,	// | 19 : SPI0_MOSI || 20 : GND       |
-		0,   0,	// | 21 : SPI0_MISO || 22 : GPIOX.2   |
-		0,   0,	// | 23 : SPI0_CLK  || 24 : SPI0_CS0  |
-		0,   0,	// | 25 : GND       || 26 : GPIOA.4   |
-		0,   0,	// | 27 : I2C-3 SDA || 28 : I2C-3 SCL |
-		0,   0,	// | 29 : GPIOX.14  || 30 : GND       |
-		0,   0,	// | 31 : GPIOX.15  || 32 : GPIOA.12  |
-		0,   0,	// | 33 : GPIOX.5   || 34 : GND       |
-		0,   0,	// | 35 : GPIOX.6   || 36 : GPIOX.19  |
-		0,   0,	// | 37 : ADC.AIN3  || 38 : REF 1.8V  |
-		0,   0	// | 39 : GND       || 40 : ADC.AIN2  |
-	},	{
-		// Cross Logic Pattern 1
-		0,   0,	// |  1 : 3.3V      ||  2 : 5.0V      |
-		1,   0,	// |  3 : I2C-2 SDA ||  4 : 5.0V      |
-		0,   0,	// |  5 : I2C-2 SCL ||  6 : GND       |
-		1,   0,	// |  7 : GPIOA.13  ||  8 : UART_TX_A |
-		0,   1,	// |  9 : GND       || 10 : UART_RX_A |
-		1,   0,	// | 11 : GPIOX.3   || 12 : PWM_E     |
-		0,   0,	// | 13 : GPIOX.4   || 14 : GND       |
-		1,   0,	// | 15 : GPIOX.7   || 16 : GPIOX.0   |
-		0,   1,	// | 17 : 3.3V      || 18 : GPIOX.1   |
-		1,   0,	// | 19 : SPI0_MOSI || 20 : GND       |
-		0,   1,	// | 21 : SPI0_MISO || 22 : GPIOX.2   |
-		1,   0,	// | 23 : SPI0_CLK  || 24 : SPI0_CS0  |
-		0,   1,	// | 25 : GND       || 26 : GPIOA.4   |
-		1,   0,	// | 27 : I2C-3 SDA || 28 : I2C-3 SCL |
-		0,   0,	// | 29 : GPIOX.14  || 30 : GND       |
-		1,   0,	// | 31 : GPIOX.15  || 32 : GPIOA.12  |
-		0,   0,	// | 33 : GPIOX.5   || 34 : GND       |
-		1,   0,	// | 35 : GPIOX.6   || 36 : GPIOX.19  |
-		0,   0,	// | 37 : ADC.AIN3  || 38 : REF 1.8V  |
-		0,   0	// | 39 : GND       || 40 : ADC.AIN2  |
-	},	{
-		// Cross Logic Pattern 2
-		0,   0,	// |  1 : 3.3V      ||  2 : 5.0V      |
-		0,   0,	// |  3 : I2C-2 SDA ||  4 : 5.0V      |
-		1,   0,	// |  5 : I2C-2 SCL ||  6 : GND       |
-		0,   1,	// |  7 : GPIOA.13  ||  8 : UART_TX_A |
-		0,   0,	// |  9 : GND       || 10 : UART_RX_A |
-		0,   1,	// | 11 : GPIOX.3   || 12 : PWM_E     |
-		0,   0,	// | 13 : GPIOX.4   || 14 : GND       |
-		0,   1,	// | 15 : GPIOX.7   || 16 : GPIOX.0   |
-		0,   0,	// | 17 : 3.3V      || 18 : GPIOX.1   |
-		0,   0,	// | 19 : SPI0_MOSI || 20 : GND       |
-		1,   0,	// | 21 : SPI0_MISO || 22 : GPIOX.2   |
-		0,   1,	// | 23 : SPI0_CLK  || 24 : SPI0_CS0  |
-		0,   0,	// | 25 : GND       || 26 : GPIOA.4   |
-		0,   1,	// | 27 : I2C-3 SDA || 28 : I2C-3 SCL |
-		1,   0,	// | 29 : GPIOX.14  || 30 : GND       |
-		0,   1,	// | 31 : GPIOX.15  || 32 : GPIOA.12  |
-		1,   0,	// | 33 : GPIOX.5   || 34 : GND       |
-		0,   1,	// | 35 : GPIOX.6   || 36 : GPIOX.19  |
-		0,   0,	// | 37 : ADC.AIN3  || 38 : REF 1.8V  |
-		0,   0	// | 39 : GND       || 40 : ADC.AIN2  |
-	},
-};
-
 bool adc_pattern_check (int *values, int pin_cnt, char pattern_no, int max, int min)
 {
 	int i, err_cnt;
 
-	info ("%s : pattern_no = %d, in_cnt =  %d, max = %d, min = %d\n",
-		__func__, pattern_no, pin_cnt, max, min);
-	
 	for (i = 0, err_cnt = 0; i < pin_cnt; i++)	{
 		if (HeaderToGPIO[i]) {
 			if (Patterns[pattern_no][i]) {
@@ -731,11 +427,8 @@ void client_msg_catch (struct server_t *pserver, char ch, char ret_ack, char *ms
 	memset  (msg_str, 0x00, sizeof(msg_str));
 	strncpy (msg_str, &msg [str_pos-1], sizeof(msg_str));
 
-	info ("%d %d :%s\n", uid, status, &msg[str_pos-1]);
-
 	/* 보내진 UI ID와 받은 UI ID가 맞는지 확인 */
 	if (uid == pserver->cmds[pchannel->cmd_pos].uid[ch]) {
-
 		if (pserver->cmds[pchannel->cmd_pos].is_adc) {
 			/* ADC Header Pin Max is 40 */
 			int values[40], cnt;
@@ -761,6 +454,12 @@ void client_msg_catch (struct server_t *pserver, char ch, char ret_ack, char *ms
 					status = 1;
 			}
 		}
+		info ("%s, %s, %s, UID %d, STATUS %d, MSG : %s\n",
+				pchannel->dev_uart_name,
+				pserver->cmds[pchannel->cmd_pos].group,
+				pserver->cmds[pchannel->cmd_pos].action,
+				uid, status, msg_str);
+
 		/* app.cfg의 설정 참조 */
 		if (!pserver->cmds[pchannel->cmd_pos].is_info) {
 			ui_set_ritem (pserver->pfb, pserver->pui, uid,
@@ -773,7 +472,8 @@ void client_msg_catch (struct server_t *pserver, char ch, char ret_ack, char *ms
 		ui_update (pserver->pfb, pserver->pui, uid);
 	}
 	else
-		err ("UID mismatch %d, %d\n", uid, pserver->cmds[pchannel->cmd_pos].uid[ch]);
+		err ("%s : CH %s, UID mismatch %d, %d\n",
+			__func__, pchannel->dev_uart_name, uid, pserver->cmds[pchannel->cmd_pos].uid[ch]);
 
 	if (pchannel->cmd_pos < pserver->cmd_count-1)
 		pchannel->cmd_pos++;
@@ -786,7 +486,6 @@ void client_msg_catch (struct server_t *pserver, char ch, char ret_ack, char *ms
 }
 
 //------------------------------------------------------------------------------
-#define	CMD_SEND_INTERVAL	20
 void client_msg_parser (struct server_t *pserver)
 {
 	char msg[CMD_CHAR_MAX], ch, cmd;
@@ -798,8 +497,6 @@ void client_msg_parser (struct server_t *pserver)
 			continue;
 		memset (msg, 0x00, sizeof(msg));
 		if (protocol_msg_check (pchannel->puart, &cmd, msg)) {
-			info ("CH %s : cmd = %c, %s\n", pchannel->dev_uart_name, cmd, msg);
-
 			switch (cmd) {
 				case	'P':
 					pchannel->is_connect = false;	pchannel->is_busy = false;
@@ -873,7 +570,6 @@ int main(int argc, char **argv)
 		server_alive_display (&server);
 		client_msg_parser    (&server);
 		cmd_sned_control     (&server);
-
 		usleep(APP_LOOP_DELAY);
 	}
 
