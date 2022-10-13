@@ -39,12 +39,16 @@ int protocol_check (ptc_var_t *var)
 //------------------------------------------------------------------------------
 int protocol_catch (ptc_var_t *var)
 {
+	int i;
 	char cmd = var->buf[(var->p_sp + 1) % var->size];
 
 	switch (cmd) {
 		case 'R':	case 'P':	case 'A':
 		case 'O':	case 'E':	case 'B':
-		info ("Receive cmd = %c\n", cmd);
+			fprintf(stdout, "<<<===== Recv from client [cmd = %c] : ", cmd);
+			for (i = 0; i < var->size; i++)
+				fprintf(stdout, "%c", var->buf[(var->p_sp + i) % var->size]);
+			fprintf(stdout, "\n");
 		return 1;
 		default :
 		break;
@@ -77,7 +81,7 @@ void protocol_msg_send (ptc_grp_t *puart, char cmd, int uid, char *group, char *
 	send.p.head = '@';	send.p.tail = '#';
 	send.p.cmd  = cmd;	// cmd
 
-	fprintf(stdout, "Send to client [fd = %d] -> ", puart->fd);
+	fprintf(stdout, "=====>>> Send  to  client [ fd = %d] : ", puart->fd);
 	for (i = 0; i < sizeof(send_protocol_u); i++) {
 		queue_put(&puart->tx_q, &send.bytes[i]);
 		fprintf(stdout, "%c", send.bytes[i]);
