@@ -356,20 +356,33 @@ void server_alive_display (struct server_t *pserver)
 		power_pins_check (pserver);
 		system_watchdog (pserver);
 
-		if (!pserver->channel[CH_L].is_available)
-			ui_set_ritem (pserver->pfb, pserver->pui, STATUS_L_UART_R_ITEM,
-						onoff ? COLOR_RED : pserver->pui->bc.uint, -1);
+		if (!pserver->channel[CH_L].is_available || !pserver->channel[CH_L].fd_i2c) {
+			char err_msg[20];
+			memset (err_msg, 0x00, sizeof(err_msg));
 
-		if (!pserver->channel[CH_R].is_available)
-			ui_set_ritem (pserver->pfb, pserver->pui, STATUS_R_UART_R_ITEM,
-						onoff ? COLOR_RED : pserver->pui->bc.uint, -1);
+			ui_set_ritem (pserver->pfb, pserver->pui, STATUS_L_UART_R_ITEM,	COLOR_RED, -1);
+			ui_set_str (pserver->pfb, pserver->pui, STATUS_L_UART_R_ITEM,
+                  -1, -1, 3, -1, "L_CH : UART=%d I2C=%d", pserver->channel[CH_L].is_available,
+												pserver->channel[CH_L].fd_i2c);
+		}
+
+		if (!pserver->channel[CH_R].is_available|| !pserver->channel[CH_R].fd_i2c) {
+			char err_msg[20];
+			memset (err_msg, 0x00, sizeof(err_msg));
+
+			ui_set_ritem (pserver->pfb, pserver->pui, STATUS_R_UART_R_ITEM,	COLOR_RED, -1);
+			ui_set_str (pserver->pfb, pserver->pui, STATUS_R_UART_R_ITEM,
+                  -1, -1, 3, -1, "R_CH : UART=%d I2C=%d", pserver->channel[CH_R].is_available,
+												pserver->channel[CH_R].fd_i2c);
+		}
 
 		#if defined(UPTIME_DISPLAY_S_ITEM)
 		{
 			char uptime[10];
 
 			memset (uptime, 0x00, sizeof(uptime));		uptime_str(uptime);
-			ui_set_sitem (pserver->pfb, pserver->pui, UPTIME_DISPLAY_S_ITEM, -1, -1, uptime);
+			ui_set_str (pserver->pfb, pserver->pui, UPTIME_DISPLAY_S_ITEM,
+                  -1, -1, 4, -1, "%s", uptime);
 		}
 		#endif
 
@@ -379,7 +392,8 @@ void server_alive_display (struct server_t *pserver)
 			int link_speed;
 			memset (ip_addr, 0x00, sizeof(ip_addr));
 			get_netinfo(mac_addr, ip_addr, &link_speed);
-			ui_set_sitem (pserver->pfb, pserver->pui, IPADDR_DISPLAY_S_ITEM, -1, -1, ip_addr);
+			ui_set_str (pserver->pfb, pserver->pui, IPADDR_DISPLAY_S_ITEM,
+                  -1, -1, 4, -1, "%s", ip_addr);
 		}
 		#endif
 	}
@@ -469,7 +483,8 @@ void client_msg_catch (struct server_t *pserver, char ch, char ret_ack, char *ms
 		}
 		/* app.cfg의 설정 참조 */
 		if (pserver->cmds[pchannel->cmd_pos].is_str)
-			ui_set_sitem (pserver->pfb, pserver->pui, uid, -1, -1, msg_str);
+			ui_set_str (pserver->pfb, pserver->pui, uid,
+                  -1, -1, -1, -1, "%s", msg_str);
 
 		ui_update (pserver->pfb, pserver->pui, uid);
 	}
