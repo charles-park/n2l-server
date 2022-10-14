@@ -193,9 +193,9 @@ static void _ui_parser_cmd_B (char *buf, fb_info_t *fb, ui_grp_t *ui_grp)
          ptr++;
 
       s->len = slen;
-      strncpy(s->str, ptr, slen-1);
+      strncpy(s->str, ptr, s->len);
       // default string for ui_reset
-      strncpy(ui_grp->b_item[item_cnt].s_dfl, ptr, slen-1);
+      strncpy(ui_grp->b_item[item_cnt].s_dfl, ptr, s->len);
    }
 
    ptr = strtok (NULL, ",");
