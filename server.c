@@ -354,7 +354,6 @@ enum SYSTEM_STATE {
 void server_alive_display (struct server_t *pserver)
 {
 	static bool onoff = false, have_net = false;
-//	static int cmd = 0, system_state = SYSTEM_WAIT;
 
 	if (run_interval_check(&pserver->t, ALIVE_DISPLAY_IMTERVAL)) {
 		ui_set_ritem (pserver->pfb, pserver->pui, pserver->alive_r_item,
@@ -406,9 +405,17 @@ void server_alive_display (struct server_t *pserver)
 			(pserver->channel[ch].cmd_pos == 0)) {
 			if (pserver->channel[ch].state != SYSTEM_WAIT) {
 				pserver->channel[ch].state = SYSTEM_WAIT;
-				ui_update (pserver->pfb, pserver->pui, -1);
+				ui_update_group (pserver->pfb, pserver->pui, ch + 1);
+//				ui_update (pserver->pfb, pserver->pui, -1);
 			}
 		}
+		if (!pserver->channel[ch].power_status &&
+			 pserver->channel[ch].is_available &&
+			!pserver->channel[ch].is_connect ) {
+				ui_set_ritem (pserver->pfb, pserver->pui,
+						pserver->channel[ch].finish_r_item,	COLOR_DARK_GRAY, -1);
+		}
+
 		if (pserver->channel[ch].is_available &&
 			(pserver->channel[ch].cmd_pos == (pserver->cmd_count))) {
 			if (pserver->channel[ch].state != SYSTEM_FINISH) {
@@ -508,20 +515,14 @@ void client_msg_catch (struct server_t *pserver, char ch, char ret_ack, char *ms
 
 				memset (msg_str, 0x00, sizeof(msg_str));
 				sprintf(msg_str, "%s", status ? "PASS" : "FAIL");
-			}
-			else if (!strncmp (pserver->cmds[pchannel->cmd_pos].group, "LED", sizeof("LED")))
-			{
-				sprintf(msg_str, "%04d", values[0]);
-			}
-			else if (!strncmp (pserver->cmds[pchannel->cmd_pos].group, "FAN", sizeof("FAN")))
-			{
-				sprintf(msg_str, "%04d", values[0]);
-			}
-			else if (!strncmp (pserver->cmds[pchannel->cmd_pos].group, "AUDIO", sizeof("AUDIO")))
-			{
-				sprintf(msg_str, "%04d", values[0]);
-			}
-			else {
+			} else {
+				if (pserver->cmds[pchannel->cmd_pos].is_str) {
+					if ((!strncmp (pserver->cmds[pchannel->cmd_pos].group, "LED"  , sizeof("LED"))) ||
+						(!strncmp (pserver->cmds[pchannel->cmd_pos].group, "FAN"  , sizeof("FAN"))) ||
+						(!strncmp (pserver->cmds[pchannel->cmd_pos].group, "AUDIO", sizeof("AUDIO")))) {
+						sprintf(msg_str, "%04d", values[0]);
+					}
+				}
 				if ((pserver->cmds[pchannel->cmd_pos].max < values[0]) ||
 					(pserver->cmds[pchannel->cmd_pos].min > values[0]))
 					status = 0;

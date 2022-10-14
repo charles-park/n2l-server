@@ -441,8 +441,15 @@ void ui_update_group (fb_info_t *fb, ui_grp_t *ui_grp, int gid)
 {
    int i;
    for (i = 0; i < ui_grp->b_item_cnt; i++) {
-      if (ui_grp->b_item[i].gid == gid)
+      if (ui_grp->b_item[i].gid == gid) {
+         ui_grp->b_item[i].r.bc.uint = ui_grp->bc.uint;
+         ui_grp->b_item[i].r.lc.uint = ui_grp->lc.uint;
+         ui_grp->b_item[i].s.bc.uint = ui_grp->bc.uint;
+         ui_grp->b_item[i].s.fc.uint = ui_grp->fc.uint;
+         memset  (ui_grp->b_item[i].s.str, 0x00, ITEM_STR_MAX);
+         strncpy (ui_grp->b_item[i].s.str, ui_grp->b_item[i].s_dfl, strlen (ui_grp->b_item[i].s_dfl));
          _ui_update (fb, ui_grp, ui_grp->b_item[i].id);
+      }
    }
 }
 

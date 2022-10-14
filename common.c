@@ -181,9 +181,12 @@ void get_netinfo (char *mac_str, char *ip_str, int *plink_speed)
 
 	if (!is_netinfo) {
 		memset (mac_addr, 0x00, sizeof(mac_addr));
+		memset (ip_addr, 0x00, sizeof(ip_addr));
+		link_speed = 0;
+		sprintf (mac_addr, "%s", "xx:xx:xx:xx:xx:xx");
+		sprintf ( ip_addr, "%s", "xxx.xxx.xxx.xxx");
 		if (!get_mac_addr(mac_addr)) {
 			info ("MAC ADDR : %s\n", mac_addr);
-			memset (ip_addr, 0x00, sizeof(ip_addr));
 			if (!get_ip_addr("eth0", ip_addr,
 								&link_speed)) {
 				info ("IP ADDR : %s, link speed = %d\n", ip_addr, link_speed);
