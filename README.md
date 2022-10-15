@@ -16,7 +16,8 @@ project/n2l/buntu-22.04-4.9-minimal-odroid-c4-hc4-20220705.img
 5. git clone https://github.com/charles-park/n2l-server
 6. project build : make
 7. service install : n2l-server/service/install.sh
-8. screen off disable (setterm -blank 0 -powersave off 2>/dev/null, echo 0 > /sys/class/graphics/fb0/blank)
+8. screen off disable (setterm -blank 0 -powersave off 2>/dev/null, echo 0 > /sys/class/graphics/fb0/blank)  
+   https://wiki.odroid.com/odroid-n2/ubuntu_minimal_quick_guide#disable_screen_blank  
 9. emmc resize : ubuntu pc used disk util (4608 MB)
 10. image dump : dd if=/dev/sda of=./odroid-n2l-server.img bs=512M count=10
 11. test image
