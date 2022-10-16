@@ -357,8 +357,8 @@ void ui_set_str (fb_info_t *fb, ui_grp_t *ui_grp,
       }
 
       if (font) {
-      pitem->s.f_type = (font < 0) ? ui_grp->f_type : font;
-      set_font(pitem->s.f_type);
+         pitem->s.f_type = (font < 0) ? ui_grp->f_type : font;
+         set_font(pitem->s.f_type);
       }
 
       /*
@@ -366,8 +366,8 @@ void ui_set_str (fb_info_t *fb, ui_grp_t *ui_grp,
       기존 문자열을 배경색으로 덮어 씌운다.
       */
       if ((strlen(pitem->s.str) > strlen(buf)) || n_scale != pitem->s.scale) {
-      _ui_clr_str (fb, &pitem->r, &pitem->s);
-      pitem->s.scale = n_scale;
+         _ui_clr_str (fb, &pitem->r, &pitem->s);
+         pitem->s.scale = n_scale;
       }
       pitem->s.x = (x != 0) ? x : pitem->s.x;
       pitem->s.y = (y != 0) ? y : pitem->s.y;
