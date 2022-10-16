@@ -366,12 +366,13 @@ void server_status_display (struct server_t *pserver)
 	static struct timeval t;
 	static int check_count = 0;
 	static bool onoff;
-	char state[CH_END], ch;;
+	char state, ch;;
 
 	if (!run_interval_check(&t, STATUS_CHECK_INTERVAL))
 		return;
 
-	check_count++;
+	if ((check_count++ % 2) == 0)
+		onoff = !onoff;
 
 	for (ch = 0; ch < CH_END; ch++) {
 		channel_t *pchannel = &pserver->channel[ch];
@@ -380,21 +381,19 @@ void server_status_display (struct server_t *pserver)
 			continue;
 
 		if (!pchannel->power_status)
-			state[ch] = SYSTEM_INIT;
+			state = SYSTEM_INIT;
 		else {
 			if (pchannel->watchdog_cnt > WATCHDOG_RESET_COUNT)
-					state[ch] = SYSTEM_ERROR;
+					state = SYSTEM_ERROR;
 			else if (!pchannel->is_connect) {
-					state[ch] = SYSTEM_WAIT;
+					state = SYSTEM_WAIT;
 			} else {
 				if (!pchannel->cmd_pos && 
 					(pchannel->state != SYSTEM_BOOT))
-					state[ch] = SYSTEM_BOOT;
+					state = SYSTEM_BOOT;
 				else {
 					if ((pchannel->cmd_pos != pserver->cmd_count)) {
-						state[ch] = SYSTEM_RUNNING;
-						if ((check_count % 2) == 0)
-							onoff = !onoff;
+						state = SYSTEM_RUNNING;
 
 /* r/g/b */
 #define	RUN_BOX_ON	RGB_TO_UINT(204, 204, 0)
@@ -409,17 +408,17 @@ void server_status_display (struct server_t *pserver)
 							info ("%s : channel = %d\n", __func__, ch);
 						}
 					} else {
-						state[ch] = SYSTEM_FINISH;
+						state = SYSTEM_FINISH;
 						pchannel->watchdog_cnt = 0;
 					}
 				}
 			}
 		}
-		if (pchannel->state == state[ch])
+		if (pchannel->state == state)
 			continue;
 
-		pchannel->state = state[ch];
-		switch (state[ch]) {
+		pchannel->state = state;
+		switch (state) {
 			default :	case	SYSTEM_INIT:
 				if ((pchannel->cmd_pos != pserver->cmd_count) &&
 					(pchannel->cmd_pos))	{
@@ -683,9 +682,9 @@ void cmd_sned_control (struct server_t *pserver)
 	char ch;
 	channel_t *pchannel;
 
-	for (ch = 0; ch < CH_END; ch++) {
-		pchannel = &pserver->channel[ch];
-		if (run_interval_check(&t, CMD_SEND_INTERVAL)) {
+	if (run_interval_check(&t, CMD_SEND_INTERVAL)) {
+		for (ch = 0; ch < CH_END; ch++) {
+			pchannel = &pserver->channel[ch];
 			if (!pserver->channel[ch].is_available)
 				continue;
 			if (pchannel->cmd_wait_delay) {
