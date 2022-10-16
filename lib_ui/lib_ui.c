@@ -316,6 +316,12 @@ void ui_set_sitem (fb_info_t *fb, ui_grp_t *ui_grp, int f_id, int fc, int bc, ch
 
          /* 새로운 string 복사 */
          strncpy(pitem->s.str, buf, strlen(buf));
+         switch (pitem->s_align) {
+            default :
+            case STR_ALIGN_C:
+               pitem->s.x = -1, pitem->s.y = -1;
+            break;
+         }
       }
       _ui_str_pos_xy(&pitem->r, &pitem->s);
       _ui_update_s (fb, &pitem->s, pitem->r.x, pitem->r.y);
