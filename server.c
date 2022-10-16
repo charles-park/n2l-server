@@ -366,7 +366,7 @@ void server_status_display (struct server_t *pserver)
 	static struct timeval t;
 	static int check_count = 0;
 	static bool onoff;
-	char state, ch;;
+	char state[CH_END], ch;;
 
 	if (!run_interval_check(&t, STATUS_CHECK_INTERVAL))
 		return;
@@ -380,19 +380,19 @@ void server_status_display (struct server_t *pserver)
 			continue;
 
 		if (!pchannel->power_status)
-			state = SYSTEM_INIT;
+			state[ch] = SYSTEM_INIT;
 		else {
 			if (pchannel->watchdog_cnt > WATCHDOG_RESET_COUNT)
-					state = SYSTEM_ERROR;
+					state[ch] = SYSTEM_ERROR;
 			else if (!pchannel->is_connect) {
-					state = SYSTEM_WAIT;
+					state[ch] = SYSTEM_WAIT;
 			} else {
 				if (!pchannel->cmd_pos && 
 					(pchannel->state != SYSTEM_BOOT))
-					state = SYSTEM_BOOT;
+					state[ch] = SYSTEM_BOOT;
 				else {
 					if ((pchannel->cmd_pos != pserver->cmd_count)) {
-						state = SYSTEM_RUNNING;
+						state[ch] = SYSTEM_RUNNING;
 						if ((check_count % 2) == 0)
 							onoff = !onoff;
 
@@ -409,22 +409,22 @@ void server_status_display (struct server_t *pserver)
 							info ("%s : channel = %d\n", __func__, ch);
 						}
 					} else {
-						state = SYSTEM_FINISH;
+						state[ch] = SYSTEM_FINISH;
 						pchannel->watchdog_cnt = 0;
 					}
 				}
 			}
 		}
-		if (pchannel->state == state)
+		if (pchannel->state == state[ch])
 			continue;
 
-		pchannel->state = state;
-		switch (state) {
+		pchannel->state = state[ch];
+		switch (state[ch]) {
 			default :	case	SYSTEM_INIT:
 				if ((pchannel->cmd_pos != pserver->cmd_count) &&
 					(pchannel->cmd_pos))	{
 					ui_set_sitem (pserver->pfb, pserver->pui,
-							pserver->channel[ch].finish_r_item, COLOR_WHITE, -1, "STOP");
+							pchannel->finish_r_item, COLOR_WHITE, -1, "STOP");
 					ui_set_ritem (pserver->pfb, pserver->pui,
 							pchannel->finish_r_item, COLOR_RED, -1);
 				}
@@ -441,12 +441,11 @@ void server_status_display (struct server_t *pserver)
 				ui_set_ritem (pserver->pfb, pserver->pui,
 						pchannel->finish_r_item, pserver->pui->bc.uint, -1);
 				ui_set_sitem (pserver->pfb, pserver->pui,
-						pserver->channel[ch].finish_r_item, COLOR_WHITE, -1, "WAIT");
+						pchannel->finish_r_item, COLOR_WHITE, -1, "WAIT");
 			break;
 			case	SYSTEM_RUNNING:
 				ui_set_sitem (pserver->pfb, pserver->pui,
-						pserver->channel[ch].finish_r_item, COLOR_WHITE, -1, "RUNNING");
-//						pserver->channel[ch].finish_r_item, COLOR_BLACK, -1, "RUNNING");
+						pchannel->finish_r_item, COLOR_WHITE, -1, "RUNNING");
 			break;
 			case	SYSTEM_FINISH:
 			{
@@ -461,14 +460,14 @@ void server_status_display (struct server_t *pserver)
 				ui_set_ritem (pserver->pfb, pserver->pui,
 						pchannel->finish_r_item, b_result ? COLOR_GREEN : COLOR_RED,-1);
 				ui_set_sitem (pserver->pfb, pserver->pui,
-						pserver->channel[ch].finish_r_item, COLOR_BLACK, -1, "FINISH");
+						pchannel->finish_r_item, COLOR_BLACK, -1, "FINISH");
 			}
 			break;
 			case	SYSTEM_ERROR:
 				ui_set_ritem (pserver->pfb, pserver->pui,
 						pchannel->finish_r_item, COLOR_RED, -1);
 				ui_set_sitem (pserver->pfb, pserver->pui,
-						pserver->channel[ch].finish_r_item, COLOR_WHITE, -1, "UART ERROR");
+						pchannel->finish_r_item, COLOR_WHITE, -1, "UART ERROR");
 			break;
 		}
 	}
