@@ -305,8 +305,6 @@ void app_exit (struct server_t *pserver)
 }
 
 //------------------------------------------------------------------------------
-//#define	POWER_CHECK_INTERVAL	300		/* 300ms */
-#define	POWER_CHECK_INTERVAL	1000		/* 300ms */
 void power_pins_check (struct server_t *pserver)
 {
 	int ch;
@@ -342,25 +340,6 @@ void power_pins_check (struct server_t *pserver)
 }
 
 //------------------------------------------------------------------------------
-enum SYSTEM_STATE {
-	SYSTEM_START = 0,
-	/* Server system boot */
-	SYSTEM_INIT,
-	/* target power off */
-	SYSTEM_WAIT,
-	/* target power on */
-	SYSTEM_BOOT,
-	/* boot cmd received from target */
-	SYSTEM_RUNNING,
-	/* cmd count == target cmd pos */
-	SYSTEM_FINISH,
-	/* after 1 min poower on not received boot cmd from traget */
-	SYSTEM_ERROR
-};
-
-//------------------------------------------------------------------------------
-#define	WATCHDOG_CHECK_INTERVAL	1000	/* 1 sec */
-
 void system_watchdog (struct server_t *pserver)
 {
 	static struct timeval t;
@@ -382,8 +361,6 @@ void system_watchdog (struct server_t *pserver)
 }
 
 //------------------------------------------------------------------------------
-#define	STATUS_CHECK_INTERVAL	500
-#define	BOOT_WAIT_COUNT			60
 void server_status_display (struct server_t *pserver)
 {
 	static struct timeval t;
@@ -419,9 +396,12 @@ void server_status_display (struct server_t *pserver)
 						if ((check_count % 2) == 0)
 							onoff = !onoff;
 
+/* r/g/b */
+#define	RUN_BOX_ON	RGB_TO_UINT(204, 204, 0)
+#define	RUN_BOX_OFF	RGB_TO_UINT(153, 153, 0)
 						ui_set_ritem (pserver->pfb, pserver->pui,
 								pchannel->finish_r_item,
-								onoff ? COLOR_YELLOW : COLOR_TEAL, -1);
+								onoff ? RUN_BOX_ON : RUN_BOX_OFF, -1);
 
 						if ( (pchannel->watchdog_cnt > 5) &&
 							((pchannel->watchdog_cnt % 5) == 0)) {
@@ -465,7 +445,8 @@ void server_status_display (struct server_t *pserver)
 			break;
 			case	SYSTEM_RUNNING:
 				ui_set_sitem (pserver->pfb, pserver->pui,
-						pserver->channel[ch].finish_r_item, COLOR_BLACK, -1, "RUNNING");
+						pserver->channel[ch].finish_r_item, COLOR_WHITE, -1, "RUNNING");
+//						pserver->channel[ch].finish_r_item, COLOR_BLACK, -1, "RUNNING");
 			break;
 			case	SYSTEM_FINISH:
 			{
@@ -496,7 +477,6 @@ void server_status_display (struct server_t *pserver)
 //------------------------------------------------------------------------------
 #if defined(UPTIME_DISPLAY_S_ITEM)
 
-#define	UPTIME_DISPLAY_INTERVAL	1
 void server_uptime_display (struct server_t *pserver)
 {
 	char uptime[10];
@@ -509,7 +489,6 @@ void server_uptime_display (struct server_t *pserver)
 //------------------------------------------------------------------------------
 #if defined(IPADDR_DISPLAY_S_ITEM)
 
-#define	IPADDR_DISPLAY_INTERVAL	30
 void server_ipaddr_display (struct server_t *pserver)
 {
 	char ip_addr[20], mac_addr[20];

@@ -29,9 +29,11 @@
 #define	SERVER_I2C_L_PORT		"/dev/i2c-1"
 #define	SERVER_I2C_R_PORT		"/dev/i2c-0"
 
+#define	WATCHDOG_CHECK_INTERVAL	1000	/* 1 sec */
+#define	WATCHDOG_RESET_COUNT	60	    // 60 sec
+
 #define	CMD_CHAR_MAX	        128
 #define	CMD_SEND_INTERVAL	    20      // 20 ms
-#define	WATCHDOG_RESET_COUNT	60	    // 60 sec
 #define	CMD_COUNT_MAX	        256
 #define	POWER_PINS_MAX	        16
 
@@ -45,14 +47,32 @@
 #define	STATUS_L_UART_R_ITEM	42
 #define	STATUS_R_UART_R_ITEM	46
 
-#define	UPTIME_DISPLAY_S_ITEM	7
-#define	IPADDR_DISPLAY_S_ITEM	22
+#define	POWER_CHECK_INTERVAL	500		/* 500ms */
+#define	STATUS_CHECK_INTERVAL	500
 
+//------------------------------------------------------------------------------
 //------------------------------------------------------------------------------
 enum eCHANNEL {
 	CH_L = 0,
 	CH_R,
 	CH_END
+};
+
+//------------------------------------------------------------------------------
+enum SYSTEM_STATE {
+	SYSTEM_START = 0,
+	/* Server system boot */
+	SYSTEM_INIT,
+	/* target power off */
+	SYSTEM_WAIT,
+	/* target power on */
+	SYSTEM_BOOT,
+	/* boot cmd received from target */
+	SYSTEM_RUNNING,
+	/* cmd count == target cmd pos */
+	SYSTEM_FINISH,
+	/* after 1 min poower on not received boot cmd from traget */
+	SYSTEM_ERROR
 };
 
 //------------------------------------------------------------------------------
@@ -255,20 +275,36 @@ const __u16	Patterns[4][40] = {
 //------------------------------------------------------------------------------
 // Function prototype
 //------------------------------------------------------------------------------
-void    find_uart_dev       (struct server_t *pserver, int channel);
-void    server_cmd_load     (struct server_t *pserver);
-void    power_pin_load      (struct server_t *pserver);
-void    app_cfg_load        (struct server_t *pserver);
-int     app_init            (struct server_t *pserver);
-void    app_exit            (struct server_t *pserver);
-void    power_pins_check    (struct server_t *pserver);
-void    system_watchdog     (struct server_t *pserver);
-void    server_alive_display (struct server_t *pserver);
-bool    adc_pattern_check   (int *values, int pin_cnt, char pattern_no, int max, int min);
-void    client_msg_catch    (struct server_t *pserver, char ch, char ret_ack, char *msg);
-void    client_msg_parser   (struct server_t *pserver);
-void    cmd_sned_control    (struct server_t *pserver);
-int     main                (int argc, char **argv);
+//------------------------------------------------------------------------------
+#define	UPTIME_DISPLAY_S_ITEM	7
+#define	IPADDR_DISPLAY_S_ITEM	22
+
+#if defined(UPTIME_DISPLAY_S_ITEM)
+	#define	UPTIME_DISPLAY_INTERVAL	1
+	void server_uptime_display (struct server_t *pserver);
+#endif
+
+#if defined(IPADDR_DISPLAY_S_ITEM)
+	#define	IPADDR_DISPLAY_INTERVAL	30
+	void server_ipaddr_display (struct server_t *pserver);
+#endif
+//------------------------------------------------------------------------------
+void	find_uart_dev 			(struct server_t *pserver, int channel);
+void	server_cmd_load 		(struct server_t *pserver);
+void	power_pin_load 			(struct server_t *pserver);
+void	app_cfg_load 			(struct server_t *pserver);
+void	app_protocol_install 	(struct server_t *pserver);
+int		app_init 				(struct server_t *pserver);
+void	app_exit 				(struct server_t *pserver);
+void	power_pins_check 		(struct server_t *pserver);
+void	system_watchdog 		(struct server_t *pserver);
+void	server_status_display 	(struct server_t *pserver);
+void	server_alive_display 	(struct server_t *pserver);
+bool	adc_pattern_check 		(int *values, int pin_cnt, char pattern_no, int max, int min);
+void	client_msg_catch 		(struct server_t *pserver, char ch, char ret_ack, char *msg);
+void	client_msg_parser 		(struct server_t *pserver);
+void	cmd_sned_control 		(struct server_t *pserver);
+int		main					(int argc, char **argv);
 
 //------------------------------------------------------------------------------
 //------------------------------------------------------------------------------
