@@ -31,7 +31,7 @@
 
 #define	CMD_CHAR_MAX	        128
 #define	CMD_SEND_INTERVAL	    20      // 20 ms
-#define	WATCHDOG_RESET_COUNT	5	    // 5 sec
+#define	WATCHDOG_RESET_COUNT	60	    // 60 sec
 #define	CMD_COUNT_MAX	        256
 #define	POWER_PINS_MAX	        16
 
@@ -81,9 +81,6 @@ typedef struct channel__t {
 	/* 진행중인 테스트 command위치 */
 	int		cmd_pos;
 
-	/* 테스트 진행중 발생된 에러 상황 */
-	int		err_count;
-	
 	/* command send control time */
 	struct timeval t;
 
@@ -114,13 +111,12 @@ typedef struct cmd__t {
 	char		action[10];
 	char		adc_name[16];
 	int			max, min;
+	/* command result */
+	bool		result[2];
 }	cmd_t;
 
 //------------------------------------------------------------------------------
 struct server_t {
-
-	/* alive display control time */
-	struct timeval t;
 
 	int			alive_r_item;
 

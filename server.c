@@ -210,7 +210,43 @@ void app_cfg_load (struct server_t *pserver)
 }
 
 //------------------------------------------------------------------------------
-int app_init (struct server_t *pserver) 
+void app_protocol_install (struct server_t *pserver)
+{
+	int i = 0;
+	for (i = 0; i < CH_END; i++) {
+		if (pserver->channel[i].is_available) {
+			pserver->channel[i].puart = uart_init (pserver->channel[i].dev_uart_name, B115200);
+			if (pserver->channel[i].puart) {
+				if (ptc_grp_init (pserver->channel[i].puart, 1)) {
+					if (!ptc_func_init (pserver->channel[i].puart, 0, sizeof(recv_protocol_u),
+											protocol_check, protocol_catch)) {
+						err ("UART %s protocol install fail\n", pserver->channel[i].dev_uart_name);
+					} else {
+						info ("UART %s protocol install success.\n", pserver->channel[i].dev_uart_name);
+						protocol_msg_send (pserver->channel[i].puart, 'P', 1, "REBOOT", "-");
+					}
+				}
+			}
+			else
+				pserver->channel[i].is_available = false;
+		}
+		/* UI Channel state display */
+		if (!pserver->channel[i].is_available || !pserver->channel[i].fd_i2c) {
+			char err_msg[30], ritem;
+			memset (err_msg, 0x00, sizeof(err_msg));
+			ritem = i ? STATUS_R_UART_R_ITEM : STATUS_L_UART_R_ITEM;
+
+			ui_set_ritem (pserver->pfb, pserver->pui, ritem,	COLOR_RED, -1);
+			sprintf (err_msg, "%s : UART %d, I2C %d",
+				i ? "CH_R" : "CH_L",
+				pserver->channel[i].is_available, pserver->channel[i].fd_i2c);
+			ui_set_sitem (pserver->pfb, pserver->pui, ritem, -1, -1, err_msg);
+		}
+	}
+}
+
+//------------------------------------------------------------------------------
+int app_init (struct server_t *pserver)
 {
 	info ("---------------------------------\n");
 	info ("[ %s : %s ]\n", __FILE__, __func__);
@@ -248,29 +284,9 @@ int app_init (struct server_t *pserver)
 		err ("SYSTEM Initialize fail(FB/UI)\n");
 		exit(0);
 	}
+	// UART Protocol Inatsll & Channel state UI display
+	app_protocol_install (pserver);
 
-	// UART Protocol Inatsll
-	{
-		int i = 0;
-		for (i = 0; i < CH_END; i++) {
-			if (pserver->channel[i].is_available) {
-				pserver->channel[i].puart = uart_init (pserver->channel[i].dev_uart_name, B115200);
-				if (pserver->channel[i].puart) {
-					if (ptc_grp_init (pserver->channel[i].puart, 1)) {
-						if (!ptc_func_init (pserver->channel[i].puart, 0, sizeof(recv_protocol_u),
-												protocol_check, protocol_catch)) {
-							err ("UART %s protocol install fail\n", pserver->channel[i].dev_uart_name);
-						} else {
-							info ("UART %s protocol install success.\n", pserver->channel[i].dev_uart_name);
-							protocol_msg_send (pserver->channel[i].puart, 'P', 1, "REBOOT", "-");
-						}
-					}
-				}
-				else
-					pserver->channel[i].is_available = false;
-			}
-		}
-	}
 	info ("---------------------------------\n");
 	return 0;
 }
@@ -289,12 +305,19 @@ void app_exit (struct server_t *pserver)
 }
 
 //------------------------------------------------------------------------------
+//#define	POWER_CHECK_INTERVAL	300		/* 300ms */
+#define	POWER_CHECK_INTERVAL	1000		/* 300ms */
 void power_pins_check (struct server_t *pserver)
 {
-	int i, ch;
-	int values[40], cnt, err_cnt;
+	int ch;
+	static struct timeval t;
+
+	if (!run_interval_check(&t, POWER_CHECK_INTERVAL))
+		return;
 
 	for (ch = 0; ch < 2; ch ++) {
+
+		int values[40], cnt, err_cnt, i;
 		for (i = 0, err_cnt = 0; i < pserver->power_pin_count; i++) {
 			
 			if (!pserver->channel[ch].fd_i2c) {
@@ -315,140 +338,211 @@ void power_pins_check (struct server_t *pserver)
 			}
 		}
 		pserver->channel[ch].power_status = err_cnt ? false : true;
-		if (!pserver->channel[ch].power_status) {
-			pserver->channel[ch].cmd_pos = 0;		pserver->channel[ch].is_busy = 0;
-			pserver->channel[ch].is_connect = 0;	pserver->channel[ch].watchdog_cnt = 0;
-			pserver->channel[ch].err_count = 0;
-		}
-	}
-}
-
-//------------------------------------------------------------------------------
-void system_watchdog (struct server_t *pserver)
-{
-	char ch;
-	for (ch = 0; ch < CH_END; ch++) {
-		if (!pserver->channel[ch].power_status)
-			continue;
-		if (!pserver->channel[ch].is_available)
-			continue;
-		if (pserver->channel[ch].watchdog_cnt++ < WATCHDOG_RESET_COUNT)
-			continue;
-		pserver->channel[ch].cmd_pos = 0;
-		pserver->channel[ch].is_busy = 0;
-		pserver->channel[ch].is_connect = 0;
-		pserver->channel[ch].watchdog_cnt = 0;
-		protocol_msg_send (pserver->channel[ch].puart, 'P', 1, "REBOOT", "-");
-		info ("%s : channel = %d\n", __func__, ch);
 	}
 }
 
 //------------------------------------------------------------------------------
 enum SYSTEM_STATE {
-	SYSTEM_WAIT = 0,
+	SYSTEM_START = 0,
+	/* Server system boot */
+	SYSTEM_INIT,
+	/* target power off */
+	SYSTEM_WAIT,
+	/* target power on */
+	SYSTEM_BOOT,
+	/* boot cmd received from target */
 	SYSTEM_RUNNING,
+	/* cmd count == target cmd pos */
 	SYSTEM_FINISH,
+	/* after 1 min poower on not received boot cmd from traget */
 	SYSTEM_ERROR
 };
 
-void server_alive_display (struct server_t *pserver)
+//------------------------------------------------------------------------------
+#define	WATCHDOG_CHECK_INTERVAL	1000	/* 1 sec */
+
+void system_watchdog (struct server_t *pserver)
 {
-	static bool onoff = false, have_net = false;
+	static struct timeval t;
+	char ch;
+	static int resp_wait = 0;
 
-	if (run_interval_check(&pserver->t, ALIVE_DISPLAY_IMTERVAL)) {
-		ui_set_ritem (pserver->pfb, pserver->pui, pserver->alive_r_item,
-					onoff ? COLOR_GREEN : pserver->pui->bc.uint, -1);
-		onoff = !onoff;
-
-		power_pins_check (pserver);
-		system_watchdog (pserver);
-
-		if (!pserver->channel[CH_L].is_available || !pserver->channel[CH_L].fd_i2c) {
-			char err_msg[30];
-			memset (err_msg, 0x00, sizeof(err_msg));
-
-			ui_set_ritem (pserver->pfb, pserver->pui, STATUS_L_UART_R_ITEM,	COLOR_RED, -1);
-			sprintf (err_msg, "CH_L : UART %d, I2C %d",
-				pserver->channel[CH_L].is_available, pserver->channel[CH_L].fd_i2c);
-			ui_set_sitem (pserver->pfb, pserver->pui, STATUS_L_UART_R_ITEM, -1, -1, err_msg);
-		}
-
-		if (!pserver->channel[CH_R].is_available|| !pserver->channel[CH_R].fd_i2c) {
-			char err_msg[30];
-			memset (err_msg, 0x00, sizeof(err_msg));
-
-			ui_set_ritem (pserver->pfb, pserver->pui, STATUS_R_UART_R_ITEM,	COLOR_RED, -1);
-			sprintf (err_msg, "CH_R : UART %d, I2C %d",
-				pserver->channel[CH_R].is_available, pserver->channel[CH_R].fd_i2c);
-			ui_set_sitem (pserver->pfb, pserver->pui, STATUS_R_UART_R_ITEM, -1, -1, err_msg);
-		}
-{
-	int ch;
+	if (!run_interval_check(&t, WATCHDOG_CHECK_INTERVAL))
+		return;
 
 	for (ch = 0; ch < CH_END; ch++) {
-		if (pserver->channel[ch].power_status &&
-			pserver->channel[ch].is_available &&
-			pserver->channel[ch].is_connect   &&
-			(pserver->channel[ch].cmd_pos != (pserver->cmd_count))) {
+		if (!pserver->channel[ch].power_status)
+			continue;
+		if (!pserver->channel[ch].is_available)
+			continue;
+		if (pserver->channel[ch].state == SYSTEM_ERROR)
+			continue;
+		pserver->channel[ch].watchdog_cnt++;
+	}
+}
 
-			ui_set_ritem (pserver->pfb, pserver->pui,
-					pserver->channel[ch].finish_r_item,
-					onoff ? COLOR_YELLOW : COLOR_TEAL, -1);
-			ui_set_sitem (pserver->pfb, pserver->pui,
-					pserver->channel[ch].finish_r_item, COLOR_BLACK, -1, "RUNNING");
+//------------------------------------------------------------------------------
+#define	STATUS_CHECK_INTERVAL	500
+#define	BOOT_WAIT_COUNT			60
+void server_status_display (struct server_t *pserver)
+{
+	static struct timeval t;
+	static int check_count = 0;
+	static bool onoff;
+	char state, ch;;
 
-			pserver->channel[ch].state = SYSTEM_RUNNING;
-		}
-		if (pserver->channel[ch].power_status &&
-			pserver->channel[ch].is_available &&
-			!pserver->channel[ch].is_connect   &&
-			(pserver->channel[ch].cmd_pos == 0)) {
-			if (pserver->channel[ch].state != SYSTEM_WAIT) {
-				pserver->channel[ch].state = SYSTEM_WAIT;
-				ui_update_group (pserver->pfb, pserver->pui, ch + 1);
-//				ui_update (pserver->pfb, pserver->pui, -1);
+	if (!run_interval_check(&t, STATUS_CHECK_INTERVAL))
+		return;
+
+	check_count++;
+
+	for (ch = 0; ch < CH_END; ch++) {
+		channel_t *pchannel = &pserver->channel[ch];
+		/* channel enable check (UART/I2C) */
+		if (!pchannel->is_available || !pchannel->fd_i2c)
+			continue;
+
+		if (!pchannel->power_status)
+			state = SYSTEM_INIT;
+		else {
+			if (pchannel->watchdog_cnt > WATCHDOG_RESET_COUNT)
+					state = SYSTEM_ERROR;
+			else if (!pchannel->is_connect) {
+					state = SYSTEM_WAIT;
+			} else {
+				if (!pchannel->cmd_pos && 
+					(pchannel->state != SYSTEM_BOOT))
+					state = SYSTEM_BOOT;
+				else {
+					if ((pchannel->cmd_pos != pserver->cmd_count)) {
+						state = SYSTEM_RUNNING;
+						if ((check_count % 2) == 0)
+							onoff = !onoff;
+
+						ui_set_ritem (pserver->pfb, pserver->pui,
+								pchannel->finish_r_item,
+								onoff ? COLOR_YELLOW : COLOR_TEAL, -1);
+
+						if ( (pchannel->watchdog_cnt > 5) &&
+							((pchannel->watchdog_cnt % 5) == 0)) {
+							protocol_msg_send (pchannel->puart, 'P', 1, "REBOOT", "-");
+							info ("%s : channel = %d\n", __func__, ch);
+						}
+					} else {
+						state = SYSTEM_FINISH;
+						pchannel->watchdog_cnt = 0;
+					}
+				}
 			}
 		}
-		if (!pserver->channel[ch].power_status &&
-			 pserver->channel[ch].is_available &&
-			!pserver->channel[ch].is_connect ) {
-				ui_set_ritem (pserver->pfb, pserver->pui,
-						pserver->channel[ch].finish_r_item,	COLOR_DARK_GRAY, -1);
-		}
+		if (pchannel->state == state)
+			continue;
 
-		if (pserver->channel[ch].is_available &&
-			(pserver->channel[ch].cmd_pos == (pserver->cmd_count))) {
-			if (pserver->channel[ch].state != SYSTEM_FINISH) {
-				pserver->channel[ch].state = SYSTEM_FINISH;
+		pchannel->state = state;
+		switch (state) {
+			default :	case	SYSTEM_INIT:
+				if ((pchannel->cmd_pos != pserver->cmd_count) &&
+					(pchannel->cmd_pos))	{
+					ui_set_sitem (pserver->pfb, pserver->pui,
+							pserver->channel[ch].finish_r_item, COLOR_WHITE, -1, "STOP");
+					ui_set_ritem (pserver->pfb, pserver->pui,
+							pchannel->finish_r_item, COLOR_RED, -1);
+				}
+				else
+					ui_set_ritem (pserver->pfb, pserver->pui,
+							pchannel->finish_r_item, COLOR_DIM_GRAY, -1);
+
+				pchannel->cmd_pos = 0;		pchannel->is_busy = 0;
+				pchannel->is_connect = 0;	pchannel->watchdog_cnt = 0;
+			break;
+			case	SYSTEM_WAIT:
+			case	SYSTEM_BOOT:
+				ui_update_group (pserver->pfb, pserver->pui, ch ? 2 : 1);
 				ui_set_ritem (pserver->pfb, pserver->pui,
-						pserver->channel[ch].finish_r_item,
-						pserver->channel[ch].err_count ? COLOR_RED : COLOR_GREEN, -1);
+						pchannel->finish_r_item, pserver->pui->bc.uint, -1);
 				ui_set_sitem (pserver->pfb, pserver->pui,
-						pserver->channel[ch].finish_r_item, COLOR_WHITE, -1, "FINISH");
-
+						pserver->channel[ch].finish_r_item, COLOR_WHITE, -1, "WAIT");
+			break;
+			case	SYSTEM_RUNNING:
+				ui_set_sitem (pserver->pfb, pserver->pui,
+						pserver->channel[ch].finish_r_item, COLOR_BLACK, -1, "RUNNING");
+			break;
+			case	SYSTEM_FINISH:
+			{
+				int cnt;
+				bool b_result = true;
+				for (cnt = 0; cnt < pserver->cmd_count; cnt++) {
+					if (!pserver->cmds[cnt].result[ch]) {
+						b_result = false;
+						break;
+					} 
+				}
+				ui_set_ritem (pserver->pfb, pserver->pui,
+						pchannel->finish_r_item, b_result ? COLOR_GREEN : COLOR_RED,-1);
+				ui_set_sitem (pserver->pfb, pserver->pui,
+						pserver->channel[ch].finish_r_item, COLOR_BLACK, -1, "FINISH");
 			}
+			break;
+			case	SYSTEM_ERROR:
+				ui_set_ritem (pserver->pfb, pserver->pui,
+						pchannel->finish_r_item, COLOR_RED, -1);
+				ui_set_sitem (pserver->pfb, pserver->pui,
+						pserver->channel[ch].finish_r_item, COLOR_WHITE, -1, "UART ERROR");
+			break;
 		}
 	}
 }
 
-		#if defined(UPTIME_DISPLAY_S_ITEM)
-		{
-			char uptime[10];
+//------------------------------------------------------------------------------
+#if defined(UPTIME_DISPLAY_S_ITEM)
 
-			memset (uptime, 0x00, sizeof(uptime));		uptime_str(uptime);
-			ui_set_sitem (pserver->pfb, pserver->pui, UPTIME_DISPLAY_S_ITEM, -1, -1, uptime);
-		}
+#define	UPTIME_DISPLAY_INTERVAL	1
+void server_uptime_display (struct server_t *pserver)
+{
+	char uptime[10];
+
+	memset (uptime, 0x00, sizeof(uptime));		uptime_str(uptime);
+	ui_set_sitem (pserver->pfb, pserver->pui, UPTIME_DISPLAY_S_ITEM, -1, -1, uptime);
+}
+#endif
+
+//------------------------------------------------------------------------------
+#if defined(IPADDR_DISPLAY_S_ITEM)
+
+#define	IPADDR_DISPLAY_INTERVAL	30
+void server_ipaddr_display (struct server_t *pserver)
+{
+	char ip_addr[20], mac_addr[20];
+	int link_speed;
+
+	memset (ip_addr, 0x00, sizeof(ip_addr));
+	get_netinfo(mac_addr, ip_addr, &link_speed);
+	ui_set_sitem (pserver->pfb, pserver->pui, IPADDR_DISPLAY_S_ITEM, -1, -1, ip_addr);
+}
+#endif
+
+//------------------------------------------------------------------------------
+void server_alive_display (struct server_t *pserver)
+{
+	static struct timeval t;
+	static bool onoff = false, have_net = false;
+	static int interval_cnt = 0;
+
+	if (run_interval_check(&t, ALIVE_DISPLAY_IMTERVAL)) {
+		ui_set_ritem (pserver->pfb, pserver->pui, pserver->alive_r_item,
+					onoff ? COLOR_GREEN : pserver->pui->bc.uint, -1);
+
+		#if defined(UPTIME_DISPLAY_S_ITEM)
+			if ((interval_cnt % UPTIME_DISPLAY_INTERVAL) == 0)
+				server_uptime_display (pserver);
 		#endif
 
 		#if defined(IPADDR_DISPLAY_S_ITEM)
-		{
-			char ip_addr[20], mac_addr[20];
-			int link_speed;
-			memset (ip_addr, 0x00, sizeof(ip_addr));
-			get_netinfo(mac_addr, ip_addr, &link_speed);
-			ui_set_sitem (pserver->pfb, pserver->pui, IPADDR_DISPLAY_S_ITEM, -1, -1, ip_addr);
-		}
+			if ((interval_cnt % IPADDR_DISPLAY_INTERVAL) == 0)
+				server_ipaddr_display (pserver);
 		#endif
+
+		onoff = !onoff;	interval_cnt ++;
 	}
 }
 
@@ -545,7 +639,7 @@ void client_msg_catch (struct server_t *pserver, char ch, char ret_ack, char *ms
 		if (pserver->cmds[pchannel->cmd_pos].is_str)
 			ui_set_sitem (pserver->pfb, pserver->pui, uid, -1, -1, msg_str);
 
-		if (!status)	pchannel->err_count++;
+		pserver->cmds[pchannel->cmd_pos].result[ch] =  status ? true : false;
 
 		ui_update (pserver->pfb, pserver->pui, uid);
 	}
@@ -557,13 +651,7 @@ void client_msg_catch (struct server_t *pserver, char ch, char ret_ack, char *ms
 		pchannel->cmd_pos++;
 	else
 		pchannel->cmd_pos = pserver->cmd_count;
-#if 0
-	else {
-		pchannel->cmd_pos = 0;
-		ui_update (pserver->pfb, pserver->pui, -1);
-		// finish icon display : total status
-	}
-#endif
+
 	pchannel->watchdog_cnt = 0;
 }
 
@@ -587,6 +675,7 @@ void client_msg_parser (struct server_t *pserver)
 					pchannel->is_connect = true;	pchannel->is_busy = false;
 					pchannel->cmd_pos = 0;
 					protocol_msg_send (pchannel->puart, 'A', 1, "BOOT", "-");
+					pchannel->state = SYSTEM_START;
 				break;
 				case	'A':	case	'O':	case	'E':
 					// msg parse & display
@@ -612,12 +701,13 @@ void client_msg_parser (struct server_t *pserver)
 //------------------------------------------------------------------------------
 void cmd_sned_control (struct server_t *pserver)
 {
+	static struct timeval t;
 	char ch;
 	channel_t *pchannel;
 
 	for (ch = 0; ch < CH_END; ch++) {
 		pchannel = &pserver->channel[ch];
-		if (run_interval_check(&pchannel->t, CMD_SEND_INTERVAL)) {
+		if (run_interval_check(&t, CMD_SEND_INTERVAL)) {
 			if (!pserver->channel[ch].is_available)
 				continue;
 			if (pchannel->cmd_wait_delay) {
@@ -651,9 +741,14 @@ int main(int argc, char **argv)
 	app_init (&server);
 
 	while (true) {
-		server_alive_display (&server);
-		client_msg_parser    (&server);
-		cmd_sned_control     (&server);
+		server_alive_display(&server);
+
+		power_pins_check	(&server);
+		cmd_sned_control    (&server);
+		client_msg_parser   (&server);
+		system_watchdog		(&server);
+		server_status_display (&server);
+
 		usleep(APP_LOOP_DELAY);
 	}
 
