@@ -439,8 +439,6 @@ void server_status_display (struct server_t *pserver)
 				ui_update_group (pserver->pfb, pserver->pui, ch ? 2 : 1);
 				ui_set_ritem (pserver->pfb, pserver->pui,
 						pchannel->finish_r_item, pserver->pui->bc.uint, -1);
-				ui_set_sitem (pserver->pfb, pserver->pui,
-						pchannel->finish_r_item, COLOR_WHITE, -1, "WAIT");
 			break;
 			case	SYSTEM_RUNNING:
 				ui_set_sitem (pserver->pfb, pserver->pui,

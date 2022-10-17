@@ -430,6 +430,7 @@ void ui_update (fb_info_t *fb, ui_grp_t *ui_grp, int id)
          ui_grp->b_item[i].r.lc.uint = ui_grp->lc.uint;
          ui_grp->b_item[i].s.bc.uint = ui_grp->bc.uint;
          ui_grp->b_item[i].s.fc.uint = ui_grp->fc.uint;
+         ui_grp->b_item[i].s.x = ui_grp->b_item[i].s.y = -1;
          memset  (ui_grp->b_item[i].s.str, 0x00, ITEM_STR_MAX);
          strncpy (ui_grp->b_item[i].s.str, ui_grp->b_item[i].s_dfl, strlen (ui_grp->b_item[i].s_dfl));
       }
@@ -452,6 +453,7 @@ void ui_update_group (fb_info_t *fb, ui_grp_t *ui_grp, int gid)
          ui_grp->b_item[i].r.lc.uint = ui_grp->lc.uint;
          ui_grp->b_item[i].s.bc.uint = ui_grp->bc.uint;
          ui_grp->b_item[i].s.fc.uint = ui_grp->fc.uint;
+         ui_grp->b_item[i].s.x = ui_grp->b_item[i].s.y = -1;
          memset  (ui_grp->b_item[i].s.str, 0x00, ITEM_STR_MAX);
          strncpy (ui_grp->b_item[i].s.str, ui_grp->b_item[i].s_dfl, strlen (ui_grp->b_item[i].s_dfl));
          _ui_update (fb, ui_grp, ui_grp->b_item[i].id);
