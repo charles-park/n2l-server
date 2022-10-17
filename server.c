@@ -1,8 +1,8 @@
 //------------------------------------------------------------------------------
 /**
- * @file client.c
+ * @file server.c
  * @author charles-park (charles.park@hardkernel.com)
- * @brief ODROID-N2L JIG Clint application.
+ * @brief ODROID-N2L JIG Server application.
  * @version 0.1
  * @date 2022-10-04
  * 

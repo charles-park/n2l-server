@@ -380,16 +380,24 @@ int fwrite_str (char *filename, char *wstr)
 }
 
 //------------------------------------------------------------------------------
-#define CONFIG_APP_FILE     "app.cfg"
+#define CONFIG_APP_FILE_1     "/media/boot/app.cfg"
+#define CONFIG_APP_FILE_2     "app.cfg"
 
 int find_appcfg_data (char *fkey, char *fdata)
 {
 	FILE *fp;
-	char read_line[128], *ptr;
+	char read_line[128], *ptr, fname[64];
 	bool appcfg = false, multiline = false;
 	int cmd_cnt = 0, pos = 0;;
-	if (access (CONFIG_APP_FILE, R_OK) == 0) {
-		if ((fp = fopen (CONFIG_APP_FILE, "r")) != NULL) {
+
+	memset (fname, 0x00, sizeof(fname));
+	if (access(CONFIG_APP_FILE_1, R_OK) == 0)
+		sprintf(fname, "%s", CONFIG_APP_FILE_1);
+	else
+		sprintf(fname, "%s", CONFIG_APP_FILE_2);
+
+	if (access (fname, R_OK) == 0) {
+		if ((fp = fopen (fname, "r")) != NULL) {
 			memset (read_line, 0x00, sizeof(read_line));
 			if (!strncmp ("SERVER_CMD", fkey, sizeof("SERVER_CMD")-1))
 				multiline = true;
