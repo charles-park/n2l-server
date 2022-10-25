@@ -2,7 +2,7 @@
 ODROID-N2L JIG-Server (ODROID-C4 app)
 
 ### Install Package
-build-essential, git, overlayroot, vim, ssh, 
+build-essential, git, overlayroot, vim, ssh, minicom
 
 ### Base Image
 project/n2l/buntu-22.04-4.9-minimal-odroid-c4-hc4-20220705.img
@@ -20,7 +20,7 @@ project/n2l/buntu-22.04-4.9-minimal-odroid-c4-hc4-20220705.img
    vi ~/.bashrc (반드시 실행되는 터미널의 bashrc를 수정하여야 함)
    https://wiki.odroid.com/odroid-n2/ubuntu_minimal_quick_guide#disable_screen_blank  
 9. emmc resize : ubuntu pc used disk util (4608 MB)
-10. image dump : dd if=/dev/sda of=./odroid-n2l-server.img bs=512M count=10
+10. image dump : dd if=/dev/sda of=./odroid-n2l-server.img bs=512M count=9
 11. test image
 12. overlay enable
 ```
