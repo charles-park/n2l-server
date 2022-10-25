@@ -5,9 +5,9 @@
  * @brief ODROID-N2L JIG Server application.
  * @version 0.1
  * @date 2022-10-04
- * 
+ *
  * @copyright Copyright (c) 2022
- * 
+ *
  */
 //------------------------------------------------------------------------------
 // for my lib
@@ -313,7 +313,7 @@ void power_pins_check (struct server_t *pserver)
 	if (!run_interval_check(&t, POWER_CHECK_INTERVAL))
 		return;
 
-	for (ch = 0; ch < 2; ch ++) {
+	for (ch = 0; ch < CH_END; ch ++) {
 
 		int values[40], cnt, err_cnt, i;
 		for (i = 0, err_cnt = 0; i < pserver->power_pin_count; i++) {
@@ -622,8 +622,19 @@ void client_msg_catch (struct server_t *pserver, char ch, char ret_ack, char *ms
 		err ("%s : CH %s, UID mismatch %d, %d\n",
 			__func__, pchannel->dev_uart_name, uid, pserver->cmds[pchannel->cmd_pos].uid[ch]);
 
-	if (pchannel->cmd_pos < pserver->cmd_count-1)
-		pchannel->cmd_pos++;
+	if (pchannel->cmd_pos < pserver->cmd_count-1) {
+		if (!status && (pchannel->cmd_retry < CMD_RETRY_CNT) &&
+			 pserver->cmds[pchannel->cmd_pos].is_adc) {
+			err ("ch %d : cmd %s,%s, retry = %d\n", ch,
+									pserver->cmds[pchannel->cmd_pos].group,
+									pserver->cmds[pchannel->cmd_pos].action,
+									pchannel->cmd_retry);
+			pchannel->cmd_retry++;
+		}
+		else {
+			pchannel->cmd_retry = 0;	pchannel->cmd_pos++;
+		}
+	}
 	else
 		pchannel->cmd_pos = pserver->cmd_count;
 

@@ -5,9 +5,9 @@
  * @brief ODROID-N2L Server app header.
  * @version 0.1
  * @date 2022-10-13
- * 
+ *
  * @copyright Copyright (c) 2022
- * 
+ *
  */
 //------------------------------------------------------------------------------
 #ifndef __SERVER_H__
@@ -86,7 +86,7 @@ typedef struct channel__t {
 	bool	is_available;
 	/* POWER_PIN으로 정의 되어진 모든 PIN이 정상인지 표시 */
 	bool	power_status;
-	
+
 	/* Client 보드와 통신하기 위한 USB uart node 이름 */
 	char	dev_uart_name[128];
 	char	usb_port[128];
@@ -101,6 +101,9 @@ typedef struct channel__t {
 	/* 진행중인 테스트 command위치 */
 	int		cmd_pos;
 
+#define	CMD_RETRY_CNT	3
+	int		cmd_retry;
+
 	/* command send control time */
 	struct timeval t;
 
@@ -108,7 +111,7 @@ typedef struct channel__t {
 	int				watchdog_cnt;
 
 	/* Busy status의 경우 일정시간 cmd delay */
-	int				cmd_wait_delay;	
+	int				cmd_wait_delay;
 
 	/* Test result display */
 	int				finish_r_item;
@@ -147,7 +150,7 @@ struct server_t {
 	fb_info_t	*pfb;
 	ui_grp_t	*pui;
 	channel_t	channel[2];
-	
+
 	int				power_pin_count;
 	power_pins_t	power_pins[POWER_PINS_MAX];
 
