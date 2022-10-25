@@ -43,15 +43,16 @@ overlayroot="tmpfs"
 ```
 13. overlay modified/disable  
 ```
-overlayroot.conf 파일의 overlayroot=”tmpfs”를 overlayroot=””로 변경합니다.
-vi /etc/overlayroot.conf
-overlayroot_cfgdisk="disabled"
-overlayroot=""
 [get write permission]
 odroid@hirsute-server:~$ sudo overlayroot-chroot 
 INFO: Chrooting into [/media/root-ro]
 root@hirsute-server:/# 
 
 [disable overlayroot]
+overlayroot.conf 파일의 overlayroot=”tmpfs”를 overlayroot=””로 변경합니다.
+vi /etc/overlayroot.conf
+overlayroot_cfgdisk="disabled"
+overlayroot=""
+
 ```
 14. final image dump  
