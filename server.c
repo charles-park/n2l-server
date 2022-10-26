@@ -207,6 +207,27 @@ void app_cfg_load (struct server_t *pserver)
 		pserver->channel[CH_R].finish_r_item = FINISH_DISPLAY_R_ITEM_R;
 	else
 		pserver->channel[CH_R].finish_r_item = atoi(int_str);
+
+	// net printer app check
+#define	NLP_DISPLAY_R_ITEM	27
+	memset (int_str, 0x00, sizeof(int_str));
+	if (find_appcfg_data ("NLP_DISPLAY_R_ITEM", int_str))
+		pserver->nlp_r_item = NLP_DISPLAY_R_ITEM;
+	else
+		pserver->nlp_r_item = atoi(int_str);
+
+	if (!find_appcfg_data ("NLP_APP_PATH", pserver->nlp_path)) {
+		if (access (pserver->nlp_path, R_OK) == 0) {
+			pserver->nlp_app = true;
+			if (find_appcfg_data ("NLP_IP_ADDR", pserver->nlp_ip)) {
+				sprintf (pserver->nlp_ip, "%s", "AUTO SERACH");
+				pserver->nlp_auto = true;
+			}
+		}
+	} else {
+		pserver->nlp_app = false;
+		sprintf (pserver->nlp_ip, "%s", "DISABLE PRINTER");
+	}
 }
 
 //------------------------------------------------------------------------------
@@ -257,6 +278,12 @@ int app_init (struct server_t *pserver)
 	app_cfg_load    (pserver);
 	server_cmd_load (pserver);
 	power_pin_load  (pserver);
+
+	info ("HAVE PRINTER APP        = %s\n", pserver->nlp_app ? "true" : "false");
+	if (pserver->nlp_app) {
+		info ("\tNLP APP PATH = %s\n", pserver->nlp_path);
+		info ("\tPRINTER IP   = %s\n", pserver->nlp_auto ? "AUTO SEARCH" : pserver->nlp_ip);
+	}
 
 	info ("SERVER_FB_DEVICE        = %s\n", pserver->fb_dev);
 	info ("SERVER_UI_CONFIG        = %s\n", pserver->ui_config);
@@ -361,6 +388,53 @@ void system_watchdog (struct server_t *pserver)
 }
 
 //------------------------------------------------------------------------------
+void nlp_error_print_page (struct server_t *pserver, const char *pstr)
+{
+	FILE *fp;
+	char rdata[256];
+
+	memset  (rdata, 0x00, sizeof(rdata));
+	if (pserver->nlp_auto)
+		sprintf (rdata, "%s -f -t error -m %s 2<&1",    pserver->nlp_path, pstr);
+	else
+		sprintf (rdata, "%s -a %s -t error -m %s 2<&1", pserver->nlp_path,
+														pserver->nlp_ip, pstr);
+
+	if ((fp = popen(rdata, "w")) != NULL)
+		pclose(fp);
+}
+
+//------------------------------------------------------------------------------
+void nlp_error_print(struct server_t *pserver, char ch)
+{
+	char pstr[60], pstr_len = 0, i;
+
+	memset (pstr, 0x00, sizeof(pstr));
+	pstr_len = sprintf (pstr, "%d,", ch);
+
+	for (i = 0; i < pserver->cmd_count; i++) {
+		if (!pserver->cmds[i].result[ch]) {
+			char err_str[30], err_str_len;
+
+			memset (err_str, 0x00, sizeof(err_str));
+			err_str_len = sprintf (err_str, "%s-%s,",
+					pserver->cmds[i].group,	pserver->cmds[i].action);
+
+			if ((pstr_len + err_str_len) > sizeof(pstr)) {
+				nlp_error_print_page (pserver, pstr);
+				memset (pstr, 0x00, sizeof(pstr));
+				pstr_len = sprintf (pstr, "%d,%s", ch, err_str);
+			} else {
+				strncpy (&pstr[pstr_len], &err_str[0], err_str_len);
+				pstr_len += err_str_len;
+			}
+		}
+	}
+	if (pstr_len > 2)
+		nlp_error_print_page (pserver, pstr);
+}
+
+//------------------------------------------------------------------------------
 void server_status_display (struct server_t *pserver)
 {
 	static struct timeval t;
@@ -454,6 +528,11 @@ void server_status_display (struct server_t *pserver)
 						break;
 					} 
 				}
+
+				/* Error print : netowrk printer */
+				if (!b_result && pserver->nlp_app)
+					nlp_error_print(pserver, ch);
+
 				ui_set_ritem (pserver->pfb, pserver->pui,
 						pchannel->finish_r_item, b_result ? COLOR_GREEN : COLOR_RED,-1);
 				ui_set_sitem (pserver->pfb, pserver->pui,
@@ -517,6 +596,15 @@ void server_alive_display (struct server_t *pserver)
 				server_ipaddr_display (pserver);
 		#endif
 
+		#if defined(NLP_DISPLAY_R_ITEM)
+			if ((interval_cnt % IPADDR_DISPLAY_INTERVAL) == 0) {
+				ui_set_sitem (pserver->pfb, pserver->pui, pserver->nlp_r_item, -1, -1,
+					pserver->nlp_ip);
+				if (!pserver->nlp_app)
+					ui_set_ritem (pserver->pfb, pserver->pui,
+							pserver->nlp_r_item, COLOR_DIM_GRAY, -1);
+			}
+		#endif
 		onoff = !onoff;	interval_cnt ++;
 	}
 }
