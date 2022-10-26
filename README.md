@@ -59,8 +59,9 @@ overlayroot=""
 
 ### NLP(Network Label Printer) 설치 및 등록 방법
 1. git clone https://github.com/charles-park/nlp_test
-2. build nlp_test
-3. n2l-server/app.cfg에 아래의 내용 등록 (app.cfg 내용 참조)  
+2. apt install nmap
+3. build nlp_test
+4. n2l-server/app.cfg에 아래의 내용 등록 (app.cfg 내용 참조)  
 ```
 # ----------------------------------------------------------------------------
 #
