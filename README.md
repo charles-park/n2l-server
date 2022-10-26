@@ -56,3 +56,23 @@ overlayroot=""
 
 ```
 14. final image dump  
+
+### NLP(Network Label Printer) 설치 및 등록 방법
+1. git clone https://github.com/charles-park/nlp_test
+2. build nlp_test
+3. n2l-server/app.cfg에 아래의 내용 등록 (app.cfg 내용 참조)  
+```
+# ----------------------------------------------------------------------------
+#
+# Network printer 설정
+#
+# NLP_APP_PATH : 실행파일 위치 및 실행파일명, 없으면 disable
+# NLP_IP_ADDR : 프린터 IP, 없으면 자동으로 찾아서 전송(만약 없는 경우에는 프린트 x)
+# github.com/charles-park/nlp_test.git을 사용하여 프린트. (nlp_test -h 로 명령검토)
+#
+# ----------------------------------------------------------------------------
+NLP_APP_PATH = /root/nlp_app/nlp_app
+# NLP_IP_ADDR = 192.168.20.28
+NLP_DISPLAY_R_ITEM = 27
+```
+
