@@ -223,6 +223,17 @@ void app_cfg_load (struct server_t *pserver)
 				sprintf (pserver->nlp_ip, "%s", "AUTO SERACH");
 				pserver->nlp_auto = true;
 			}
+			// ZD230 Printer add
+			{
+				char model_name[10];
+				memset (model_name, 0x00, sizeof(model_name));
+
+				pserver->nlp_zd230d = false;
+				if (!find_appcfg_data ("NLP_MODEL", model_name)) {
+					if (!strncmp ("ZD230D", model_name, strlen("ZD230D")-1))
+						pserver->nlp_zd230d = true;
+				}
+			}
 		}
 	} else {
 		pserver->nlp_app = false;
@@ -388,17 +399,24 @@ void system_watchdog (struct server_t *pserver)
 }
 
 //------------------------------------------------------------------------------
-void nlp_error_print_page (struct server_t *pserver, const char *pstr)
+void nlp_error_print_page (struct server_t *pserver, char ch, const char *pstr)
 {
 	FILE *fp;
 	char rdata[256];
 
 	memset  (rdata, 0x00, sizeof(rdata));
 	if (pserver->nlp_auto)
-		sprintf (rdata, "%s -f -t error -m %s 2<&1",    pserver->nlp_path, pstr);
+		sprintf (rdata, "%s -c %s %s -t error -m %s 2<&1",
+			pserver->nlp_path,
+			ch ? "right" : "left",
+			pserver->nlp_zd230d ? "-f -z" : "-f",
+			pstr);
 	else
-		sprintf (rdata, "%s -a %s -t error -m %s 2<&1", pserver->nlp_path,
-														pserver->nlp_ip, pstr);
+		sprintf (rdata, "%s -c %s %s %s -t error -m %s 2<&1",
+			pserver->nlp_path,
+			ch ? "right" : "left",
+			pserver->nlp_zd230d ? "-z -a" : "-a",
+			pserver->nlp_ip, pstr);
 
 	if ((fp = popen(rdata, "w")) != NULL)
 		pclose(fp);
@@ -410,7 +428,6 @@ void nlp_error_print(struct server_t *pserver, char ch)
 	char pstr[60], pstr_len = 0, i;
 
 	memset (pstr, 0x00, sizeof(pstr));
-	pstr_len = sprintf (pstr, "%d,", ch);
 
 	for (i = 0; i < pserver->cmd_count; i++) {
 		if (!pserver->cmds[i].result[ch]) {
@@ -421,9 +438,9 @@ void nlp_error_print(struct server_t *pserver, char ch)
 					pserver->cmds[i].group,	pserver->cmds[i].action);
 
 			if ((pstr_len + err_str_len) > sizeof(pstr)) {
-				nlp_error_print_page (pserver, pstr);
+				nlp_error_print_page (pserver, ch, pstr);
 				memset (pstr, 0x00, sizeof(pstr));
-				pstr_len = sprintf (pstr, "%d,%s", ch, err_str);
+				pstr_len = sprintf (pstr, "%s", err_str);
 			} else {
 				strncpy (&pstr[pstr_len], &err_str[0], err_str_len);
 				pstr_len += err_str_len;
@@ -431,7 +448,7 @@ void nlp_error_print(struct server_t *pserver, char ch)
 		}
 	}
 	if (pstr_len > 2)
-		nlp_error_print_page (pserver, pstr);
+		nlp_error_print_page (pserver, ch, pstr);
 }
 
 //------------------------------------------------------------------------------

@@ -150,7 +150,7 @@ struct server_t {
 	/* ODROID Netowrk Printer IP Address Str */
 	/* nlp_app : git clone https://github.com/charles-park/nlp_test */
 	char		nlp_path[128], nlp_ip[20];
-	bool		nlp_app, nlp_auto;
+	bool		nlp_app, nlp_auto, nlp_zd230d;
 	int			nlp_r_item;
 
 	fb_info_t	*pfb;
